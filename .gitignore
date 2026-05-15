@@ -1,0 +1,17 @@
+# Doom-generated
+.local/
+.cache/
+
+# Per-daemon persp state (machine-local)
+.persp-state-*.el
+
+# Compiled elc
+*.elc
+
+# Backup files
+*~
+\#*\#
+.\#*
+
+# OS noise
+.DS_Store

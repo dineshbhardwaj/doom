@@ -1,0 +1,524 @@
+;;; $DOOMDIR/config.el -*- lexical-binding: t; -*-
+
+;; Place your private configuration here! Remember, you do not need to run 'doom
+;; sync' after modifying this file!
+
+;; Dinesh Archive
+(setq package-archives '(("gnu" . "http://elpa.gnu.org/packages/")
+                         ("org" . "http://orgmode.org/elpa/")
+                         ("melpa" . "http://melpa.org/packages/")))
+
+;;(package-refresh-contents)
+;; Dinesh Over
+;; Some functionality uses this to identify you, e.g. GPG configuration, email
+;; clients, file templates and snippets. It is optional.
+;; (setq user-full-name "John Doe"
+;;       user-mail-address "john@doe.com")
+
+;; Doom exposes five (optional) variables for controlling fonts in Doom:
+;;
+;; - `doom-font' -- the primary font to use
+;; - `doom-variable-pitch-font' -- a non-monospace font (where applicable)
+;; - `doom-big-font' -- used for `doom-big-font-mode'; use this for
+;;   presentations or streaming.
+;; - `doom-symbol-font' -- for symbols
+;; - `doom-serif-font' -- for the `fixed-pitch-serif' face
+;;
+;; See 'C-h v doom-font' for documentation and more examples of what they
+;; accept. For example:
+;;
+;;(setq doom-font (font-spec :family "Fira Code" :size 12 :weight 'semi-light)
+;;      doom-variable-pitch-font (font-spec :family "Fira Sans" :size 13))
+;;
+;; If you or Emacs can't find your font, use 'M-x describe-font' to look them
+;; up, `M-x eval-region' to execute elisp code, and 'M-x doom/reload-font' to
+;; refresh your font settings. If Emacs still can't find your font, it likely
+;; wasn't installed correctly. Font issues are rarely Doom issues!
+
+;; There are two ways to load a theme. Both assume the theme is installed and
+;; available. You can either set `doom-theme' or manually load a theme with the
+;; `load-theme' function. This is the default:
+(setq doom-theme 'doom-one)
+
+;; This determines the style of line numbers in effect. If set to `nil', line
+;; numbers are disabled. For relative line numbers, set this to `relative'.
+(setq display-line-numbers-type t)
+
+;; If you use `org' and don't want your org files in the default location below,
+;; change `org-directory'. It must be set before org loads!
+(setq org-directory "~/Dropbox/organist-dinesh/")                               
+(setq org-roam-directory "~/Dropbox/org-roam/")  
+
+;; Whenever you reconfigure a package, make sure to wrap your config in an
+;; `after!' block, otherwise Doom's defaults may override your settings. E.g.
+;;
+;;   (after! PACKAGE
+;;     (setq x y))
+;;
+;; The exceptions to this rule:
+;;
+;;   - Setting file/directory variables (like `org-directory')
+;;   - Setting variables which explicitly tell you to set them before their
+;;     package is loaded (see 'C-h v VARIABLE' to look up their documentation).
+;;   - Setting doom variables (which start with 'doom-' or '+').
+;;
+;; Here are some additional functions/macros that will help you configure Doom.
+;;
+;; - `load!' for loading external *.el files relative to this one
+;; - `use-package!' for configuring packages
+;; - `after!' for running code after a package has loaded
+;; - `add-load-path!' for adding directories to the `load-path', relative to
+;;   this file. Emacs searches the `load-path' when you load packages with
+;;   `require' or `use-package'.
+;; - `map!' for binding new keys
+;;
+;; To get information about any of these functions/macros, move the cursor over
+;; the highlighted symbol at press 'K' (non-evil users must press 'C-c c k').
+;; This will open documentation for it, including demos of how they are used.
+;; Alternatively, use `C-h o' to look up a symbol (functions, variables, faces,
+;; etc).
+;;
+;; You can also try 'gd' (or 'C-c c d') to jump to their definition and see how
+;; they are implemented.
+
+(after! elfeed
+  ;; --- Basic elfeed ---
+  ;; Show a 📺 prefix on YouTube entries in the search buffer
+  (defface elfeed-youtube
+    '((t :inherit elfeed-search-title-face :foreground "#ff4444"))
+    "Face for YouTube entries in elfeed-search.")
+
+  (push '(youtube elfeed-youtube) elfeed-search-face-alist)
+  (setq elfeed-search-filter "@1-month-ago +unread"
+        rmh-elfeed-org-files (list "~/Dropbox/elfeed-feed/elfeed2.org")
+        elfeed-goodies/entry-pane-position 'bottom)
+
+  ;; --- elfeed-score ---
+  (require 'elfeed-score)
+  (elfeed-score-enable)
+  (setq elfeed-score-score-file (expand-file-name "elfeed.score" doom-user-dir)
+        elfeed-search-sort-function #'elfeed-score-sort)
+
+  ;; --- elfeed-tube: YouTube transcripts & metadata ---
+  (require 'elfeed-tube)
+  (elfeed-tube-setup)
+  (setq elfeed-tube-auto-save-p nil       ; don't auto-save transcripts to DB
+        elfeed-tube-auto-fetch-p t)        ; auto-fetch when entry is opened
+
+  ;; --- elfeed-tube-mpv: play YouTube with timestamp jumps ---
+  (require 'elfeed-tube-mpv)
+
+  ;; --- Keybindings (Doom-style) ---
+  (map! :map elfeed-search-mode-map
+        "="   #'elfeed-score-load-score-file
+        "C-=" #'elfeed-score-explain
+        "F"   #'elfeed-tube-fetch         ; force-fetch transcript for entry
+        [remap save-buffer] #'elfeed-tube-save)
+
+  (map! :map elfeed-show-mode-map
+        "F"   #'elfeed-tube-fetch
+        "C-c C-f" #'elfeed-tube-mpv-follow-mode   ; scroll transcript as video plays
+        "C-c C-w" #'elfeed-tube-mpv-where         ; jump transcript to current video time
+        [remap save-buffer] #'elfeed-tube-save))
+
+;; --- elfeed-summary: dashboard view ---
+;; ══════════════════════════════════════════════════════════════════════
+;; elfeed-summary dashboard configuration
+;; Matches the three-tier feed structure from elfeed2.org
+;; Place this inside your config.el, replacing the old use-package! block
+;; ══════════════════════════════════════════════════════════════════════
+
+(use-package! elfeed-summary
+  :after elfeed
+  :commands (elfeed-summary)
+  :config
+  (setq elfeed-summary-settings
+        '(;; ───────────────────────────────────────────────────────────
+          ;; TIER 1 — PRIMARY WORK DOMAIN
+          ;; ───────────────────────────────────────────────────────────
+          (group (:title . "━━━ PRIMARY: Semiconductor Work Domain ━━━")
+                 (:face . (:foreground "#ff6b35" :weight bold))
+                 (:elements
+                  (group (:title . "🚀 OpenROAD / Open-Silicon Progress")
+                         (:elements (query . opensilicon)))
+                  (group (:title . "🤖 AI in Semiconductor")
+                         (:elements (query . ai-semi)))
+                  (group (:title . "💰 Semi Startups & Funding (Global)")
+                         (:elements (query . (and (or startup funding)
+                                                  (not india)))))
+                  (group (:title . "🇮🇳 India — Semiconductor & Deep-tech")
+                         (:elements (query . india)))
+                  (group (:title . "🏭 Core Semiconductor Industry")
+                         (:elements (query . (and semi
+                                                  (not india)
+                                                  (not ai-semi)
+                                                  (not opensilicon)))))
+                  (group (:title . "⚙️ VLSI / EDA / Chip Design")
+                         (:elements (query . (and vlsi (not youtube)))))
+                  (group (:title . "🔌 Embedded Systems / MCU / SBC")
+                         (:elements (query . (and embedded (not linux)))))
+                  (group (:title . "🐧 Embedded Linux")
+                         (:elements (query . (and embedded linux))))
+                  (group (:title . "🔧 PCB / Manufacturing / SMT")
+                         (:elements (query . (or pcb mfg))))
+                  (group (:title . "🏗️ Fabs / Lithography / Equipment")
+                         (:elements (query . (or fabs lithography equipment))))
+                  (group (:title . "📺 YouTube — Chip Design & Analysis")
+                         (:elements (query . youtube)))
+                  (group (:title . "📡 Hacker News — Semi Radar")
+                         (:elements (query . (and hn
+                                                  (not opensilicon)
+                                                  (not ai-semi)
+                                                  (not funding)))))
+                  (group (:title . "🔬 Research (arXiv / Nature / Open Silicon)")
+                         (:elements (query . research)))
+                  (group (:title . "📉 Specialty (Photonics / Power / Compound)")
+                         (:elements (query . specialty)))
+                  (group (:title . "💹 Finance & Markets (Semi lens)")
+                         (:elements (query . finance)))))
+
+          ;; ───────────────────────────────────────────────────────────
+          ;; TIER 2 — ACTIVE SECONDARY INTERESTS
+          ;; ───────────────────────────────────────────────────────────
+          (group (:title . "━━━ SECONDARY: Active Reading ━━━")
+                 (:face . (:foreground "#4a90e2" :weight bold))
+                 (:elements
+                  (group (:title . "⭐ Must-read Tech")
+                         (:elements (query . mustread)))
+                  (group (:title . "📰 General News")
+                         (:elements (query . (and news (not mustread)))))
+                  (group (:title . "💻 Technology (General)")
+                         (:elements (query . (and technology (not mustread)))))
+                  (group (:title . "📚 Magazines / Long-form")
+                         (:elements (query . magazine)))))
+
+          ;; ───────────────────────────────────────────────────────────
+          ;; META — catches anything untagged or uncategorized
+          ;; ───────────────────────────────────────────────────────────
+          (group (:title . "━━━ META ━━━")
+                 (:face . (:foreground "#888888"))
+                 (:elements
+                  (group (:title . "⚠️ Uncategorized (check tagging)")
+                         (:elements (query . (not (or opensilicon ai-semi india
+                                                      semi vlsi embedded pcb mfg
+                                                      fabs lithography equipment
+                                                      youtube hn specialty
+                                                      research finance startup
+                                                      funding news technology
+                                                      magazine mustread)))))
+                  (search (:filter . "@6-months-ago +unread")
+                          (:title . "📬 All unread (last 6 months)"))
+                  (search (:filter . "@1-week-ago")
+                          (:title . "🗓️ Everything this week"))
+                  (search (:filter . "+starred")
+                          (:title . "⭐ Starred items"))))))
+
+  ;; Other useful summary options
+  (setq elfeed-summary-look-back (* 60 60 24 30)  ; last 30 days in summary
+        elfeed-summary-refresh-on-each-update t   ; refresh dashboard on update
+        elfeed-summary-default-filter "@1-month-ago "))
+
+;; Keybinding — opens the dashboard
+(map! :leader
+      :desc "Elfeed Summary Dashboard" "o R" #'elfeed-summary)
+
+;; Bind dashboard to SPC o R (capital R to distinguish from plain elfeed SPC o r)
+(map! :leader
+      :desc "Elfeed Summary Dashboard" "o R" #'elfeed-summary)
+
+;; slime
+(after! slime
+  (load (expand-file-name "~/quicklisp/slime-helper.el"))
+  (setq inferior-lisp-program "/opt/homebrew/bin/sbcl")
+  :config ; runs this when slime loads
+  (set-repl-handler! 'lisp-mode #'sly-mrepl)
+  (set-eval-handler! 'lisp-mode #'sly-eval-region)
+  (set-lookup-handlers! 'lisp-mode
+    :definition #'sly-edit-definition
+    :documentation #'sly-describe-symbol)
+  (require 'slime-autoloads)
+  (setq slime-lisp-implementations
+           '((sbcl ("/opt/homebrew/bin/sbcl"))))
+           ;; not in brew '((sbcl ("/opt/homebrew/bin/sbcl" "--core" "sbcl.core-for-slime"))))
+  (add-hook 'lisp-mode-hook #'rainbow-delimiters-mode))
+(setq projectile-project-search-path '("~/projects/" "~/code/" ("~/github" . 1)))
+
+(after! org
+  (setq template-format "* TODO %? %^g %^{SCHEDULED}p %^{DEADLINE}p \n")
+  (setq template-format-wo-sch "* TODO %? %^g \n")
+  (add-to-list 'org-capture-templates
+             '("i" "Important-Urgent" entry
+               (file+headline "~/Dropbox/organist-dinesh/life.org" "IMPORTANT_URGENT")
+               "* TODO  %? %^g \n    %^{SCHEDULED}p %^{DEADLINE}p\n"
+               :kill-buffer t))
+  (add-to-list 'org-capture-templates
+               '("u" "UnImportant-Urgent" entry
+              (file+headline "~/Dropbox/organist-dinesh/life.org" "UNIMPORTANT_URGENT")
+
+               "* TODO  %? %^g \n    %^{SCHEDULED}p %^{DEADLINE}p\n"
+               :kill-buffer t))
+  (add-to-list 'org-capture-templates
+               '("d" "Important-UnUrgent" entry
+               (file+headline "~/Dropbox/organist-dinesh/life.org" "IMPORTANT_UNURGENT")
+               "* TODO  %? %^g \n    %^{SCHEDULED}p %^{DEADLINE}p\n"
+               :kill-buffer t))
+  (add-to-list 'org-capture-templates
+               '("w" "UnImportant-Urgent" entry
+               (file+headline "~/Dropbox/organist-dinesh/life.org" "UNIMPORTANT_UNURGENT")
+               "* TODO  %? %^g \n    %^{SCHEDULED}p %^{DEADLINE}p\n"
+               :kill-buffer t))
+  (add-to-list 'org-capture-templates
+               '("x" "Raw" entry
+               (file+headline "~/Dropbox/organist-dinesh/life.org" "UNIMPORTANT_UNURGENT")
+               "* TODO  %? \n    %^g\n"
+               :kill-buffer t))
+)
+
+;; temp (use-package! org-super-agenda
+;; temp   :after org-agenda
+;; temp   :init
+;; temp   (setq org-agenda-skip-scheduled-if-done t
+;; temp       org-agenda-skip-deadline-if-done t
+;; temp       org-agenda-include-deadlines t
+;; temp       org-agenda-block-separator nil
+;; temp       org-agenda-compact-blocks t
+;; temp       org-agenda-start-day nil ;; i.e. today
+;; temp       org-agenda-span 1
+;; temp       org-agenda-start-on-weekday nil)
+;; temp   (setq org-agenda-custom-commands
+;; temp         '(("c" "Super view"
+;; temp            (
+;; temp             (alltodo "" ((org-agenda-overriding-header "")
+;; temp                          (org-super-agenda-groups
+;; temp                           '((:log t)
+;; temp                             (:name "Highest Priority"
+;; temp                                    :and (:priority "A" :tag ("Important" "Urgent"))
+;; temp                                    :todo "STRT"
+;; temp                                    :order 1)
+;; temp                             (:name "Urgent-Important"
+;; temp                                    :and (:tag "Urgent" :tag "Important" :deadline (today past))
+;; temp                                    :and (:tag "Urgent" :tag "Important" :scheduled (today past))
+;; temp                                    :order 2)
+;; temp                             (:name "Urgent-UnImportant"
+;; temp                                    :and (:tag "Urgent" :not (:tag "Important") :deadline (today past))
+;; temp                                    :and (:tag "Urgent" :not (:tag "Important") :scheduled (today past))
+;; temp                                    :order 3)
+;; temp                             (:name "Important-UnUrgent"
+;; temp                                    :and (:tag "Important" :not (:tag "Urgent") :deadline (today past))
+;; temp                                    :and (:tag "Important" :not (:tag "Urgent") :scheduled (today past))
+;; temp                                    :order 4)
+;; temp                             (:name "UnImportant-UnUrgent"
+;; temp                                    :and (:not (:tag "Important") :not (:tag "Urgent") :deadline (today past))
+;; temp                                    :and (:not (:tag "Important") :not (:tag "Urgent") :scheduled (today past))
+;; temp                                    :order 5)
+;; temp                             (:name "Scheduled Soon"
+;; temp                                    :scheduled future
+;; temp                                    :order 6)
+;; temp                             (:name "Meetings"
+;; temp                                    :and (:todo "MEET" :scheduled future)
+;; temp                                    :order 7)
+;; temp                             (:discard (:not (:todo "TODO")))))))
+;; temp             (agenda "" ((org-agenda-overriding-header "")
+;; temp                         (org-super-agenda-groups
+;; temp                          '((:name "Today"
+;; temp                                   :time-grid t
+;; temp                                   :date today
+;; temp                                   :order 1)))))
+;; temp
+;; temp                         ))))
+;; temp   :config
+;; temp   (org-super-agenda-mode))
+(after! hy-mode
+  (setq hy-jedhy--enable? nil))
+;; claud recommendation started from here
+;;
+;; ════════════════════════════════════════════════════════════════════
+;; PATH SETUP — ensure Emacs sees node/npm/claude binaries
+;; ════════════════════════════════════════════════════════════════════
+(use-package! exec-path-from-shell
+  :config
+  (when (or (memq window-system '(mac ns x)) (daemonp))
+    (exec-path-from-shell-initialize)))
+
+
+;; vterm — make sure the module compiles cleanly
+(use-package! vterm
+  :defer t
+  :config
+  (setq vterm-max-scrollback 10000
+        vterm-shell (or (executable-find "zsh") "/bin/bash")))
+
+
+;; ════════════════════════════════════════════════════════════════════
+;; CLAUDE CODE
+;; ════════════════════════════════════════════════════════════════════
+(use-package! claude-code
+  :after vterm
+  :config
+  (claude-code-mode 1))
+
+;; ════════════════════════════════════════════════════════════════════
+;; FORGE — GitHub integration
+;; ════════════════════════════════════════════════════════════════════
+(use-package! forge
+  :after magit
+  :config
+  (setq forge-topic-list-limit '(60 . 0)))
+
+;; ════════════════════════════════════════════════════════════════════
+;; CLAUDE + ELFEED HELPERS
+;; ════════════════════════════════════════════════════════════════════
+
+(defun my/claude-summarize-entry ()
+  "Send the current elfeed entry to Claude for summarization."
+  (interactive)
+  (unless (eq major-mode 'elfeed-show-mode)
+    (user-error "Run this from an elfeed entry buffer"))
+  (let* ((entry elfeed-show-entry)
+         (title (elfeed-entry-title entry))
+         (link (elfeed-entry-link entry))
+         (content (elfeed-deref (elfeed-entry-content entry)))
+         (prompt (format
+                  "Summarize this article in 4-5 bullet points, focused on what's relevant to a semiconductor/VLSI engineer. Then list any specific companies, technologies, or papers mentioned that are worth following up on.\n\nTitle: %s\nURL: %s\n\nContent:\n%s"
+                  title link content)))
+    (unless (claude-code--get-buffer-name)
+      (claude-code))
+    (claude-code-send-command prompt)
+    (claude-code-toggle)))
+
+(defun my/claude-extract-action-items ()
+  "Ask Claude to extract action items from the current elfeed entry."
+  (interactive)
+  (unless (eq major-mode 'elfeed-show-mode)
+    (user-error "Run this from an elfeed entry buffer"))
+  (let* ((entry elfeed-show-entry)
+         (content (elfeed-deref (elfeed-entry-content entry)))
+         (prompt (format
+                  "Read this article. Extract any concrete action items I should take as a VLSI/semiconductor engineer — papers to read, tools to try, GitHub repos to star, conferences to attend, deadlines to note. Be specific. If there are none, say so.\n\n%s"
+                  content)))
+    (unless (claude-code--get-buffer-name)
+      (claude-code))
+    (claude-code-send-command prompt)
+    (claude-code-toggle)))
+
+(defun my/claude-cross-reference-feeds (filter)
+  "Ask Claude to find patterns across recent feed entries matching FILTER."
+  (interactive (list (read-string "Elfeed filter: " "+opensilicon @1-week-ago")))
+  (let ((entries-text ""))
+    (with-current-buffer (get-buffer-create "*elfeed-search*")
+      (elfeed-search-set-filter filter)
+      (sit-for 1)
+      (setq entries-text (buffer-substring-no-properties (point-min) (point-max))))
+    (let ((prompt (format
+                   "Below is a list of article titles from my RSS feeds matching the filter '%s'. Identify recurring themes, surprising developments, and connections. Highlight 3-5 takeaways most useful for a semiconductor/VLSI engineer.\n\n%s"
+                   filter entries-text)))
+      (unless (claude-code--get-buffer-name)
+        (claude-code))
+      (claude-code-send-command prompt)
+      (claude-code-toggle))))
+
+;; ════════════════════════════════════════════════════════════════════
+;; CLAUDE + CODE HELPERS
+;; ════════════════════════════════════════════════════════════════════
+
+(defun my/claude-explain-code ()
+  "Send selected code (or current function) to Claude with explain prompt."
+  (interactive)
+  (let* ((code (if (use-region-p)
+                   (buffer-substring-no-properties (region-beginning) (region-end))
+                 (thing-at-point 'defun)))
+         (prompt (format
+                  "Explain this code. Focus on: (1) what it does at a high level, (2) any non-obvious tricks, (3) potential bugs or edge cases. Be concise.\n\n```\n%s\n```"
+                  code)))
+    (unless (claude-code--get-buffer-name)
+      (claude-code))
+    (claude-code-send-command prompt)
+    (claude-code-toggle)))
+
+(defun my/claude-review-verilog ()
+  "Send selected region or buffer to Claude for Verilog review."
+  (interactive)
+  (let* ((code (if (use-region-p)
+                   (buffer-substring-no-properties (region-beginning) (region-end))
+                 (buffer-substring-no-properties (point-min) (point-max))))
+         (prompt (format
+                  "Review this Verilog/SystemVerilog code as an experienced VLSI engineer. Check for: synthesizability issues, clock domain crossings, race conditions, lint violations (unused signals, latches, blocking vs non-blocking misuse), and style consistency. Suggest concrete improvements.\n\n```verilog\n%s\n```"
+                  code)))
+    (unless (claude-code--get-buffer-name)
+      (claude-code))
+    (claude-code-send-command prompt)
+    (claude-code-toggle)))
+
+(defun my/claude-write-testbench ()
+  "Ask Claude to write a testbench for the current Verilog module."
+  (interactive)
+  (let* ((code (buffer-substring-no-properties (point-min) (point-max)))
+         (prompt (format
+                  "Write a SystemVerilog testbench for this module. Include: (1) clock and reset generation, (2) stimulus that exercises corner cases, (3) self-checking via assertions, (4) coverage points for important behaviors. Make it synthesizable for simulation only — no UVM unless I ask.\n\n```verilog\n%s\n```"
+                  code)))
+    (unless (claude-code--get-buffer-name)
+      (claude-code))
+    (claude-code-send-command prompt)
+    (claude-code-toggle)))
+
+(defun my/claude-explain-error ()
+  "Send the error message at point to Claude."
+  (interactive)
+  (let* ((err-text (thing-at-point 'paragraph t))
+         (prompt (format
+                  "I'm getting this error/log output. Explain what it means and the most likely fix:\n\n%s"
+                  err-text)))
+    (unless (claude-code--get-buffer-name)
+      (claude-code))
+    (claude-code-send-command prompt)
+    (claude-code-toggle)))
+
+;; ════════════════════════════════════════════════════════════════════
+;; KEYBINDINGS — Using safer leader prefixes
+;; SPC k = Claude (think "kAI"/"chat with kClaude")
+;; SPC g = git/forge (Doom default — augmenting it)
+;; SPC m = my LLM/feed helpers
+;; ════════════════════════════════════════════════════════════════════
+
+;; Claude commands under SPC k
+(map! :leader
+      (:prefix-map ("k" . "claude")
+       :desc "Start Claude Code"        "k" #'claude-code
+       :desc "Continue last session"    "c" #'claude-code-continue
+       :desc "Resume past session"      "R" #'claude-code-resume
+       :desc "Send region"              "r" #'claude-code-send-region
+       :desc "Send buffer"              "b" #'claude-code-send-buffer
+       :desc "Send command"             "s" #'claude-code-send-command
+       :desc "Switch session"           "S" #'claude-code-switch-to-buffer
+       :desc "Toggle window"            "t" #'claude-code-toggle
+       :desc "Kill session"             "K" #'claude-code-kill
+       :desc "Explain code"             "e" #'my/claude-explain-code
+       :desc "Review Verilog"           "v" #'my/claude-review-verilog
+       :desc "Write testbench"          "T" #'my/claude-write-testbench
+       :desc "Explain error"            "x" #'my/claude-explain-error))
+
+;; My LLM/feed helpers under SPC m
+(map! :leader
+      (:prefix-map ("m" . "my-tools/feeds")
+       :desc "Summarize entry"          "s" #'my/claude-summarize-entry
+       :desc "Extract action items"     "a" #'my/claude-extract-action-items
+       :desc "Cross-reference feeds"    "f" #'my/claude-cross-reference-feeds))
+
+;; Forge bindings — use Doom's existing SPC g prefix without conflicting
+;; Doom already has SPC g as a prefix; we add Forge commands under SPC g f
+(after! magit
+  (map! :leader
+        :desc "Forge dispatch"      "g f" #'forge-dispatch
+        :desc "List PRs"            "g R" #'forge-list-pullreqs   ; capital R to avoid Doom defaults
+        :desc "List issues"         "g I" #'forge-list-issues
+        :desc "Create PR"           "g N" #'forge-create-pullreq))
+;; eat programming with keys working
+(after! eat
+  ;; Let eat-yank handle pastes properly inside the terminal buffer
+  (setq eat-enable-yank-to-terminal t)
+
+  ;; Route Cmd+V (macOS) and Ctrl+Shift+V (Linux) through eat-yank
+  (define-key eat-semi-char-mode-map [?\s-v]    #'eat-yank)   ; macOS Cmd+V
+  (define-key eat-char-mode-map      [?\s-v]    #'eat-yank)
+  (define-key eat-semi-char-mode-map (kbd "C-S-v") #'eat-yank) ; Linux
+  (define-key eat-char-mode-map      (kbd "C-S-v") #'eat-yank))
