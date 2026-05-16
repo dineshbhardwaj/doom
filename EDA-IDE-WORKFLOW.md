@@ -443,7 +443,87 @@ Each daemon's Claude Code session reads the worktree's `CLAUDE.md` at start — 
 
 ---
 
-## 10. End of day
+## 10. Workspace-bound Claude sessions
+
+Beyond the single ad-hoc `SPC k k` session, every workspace (persp = one
+task = one worktree) can host **multiple role-specialised Claude sessions
+of its own**. Each is bound to the workspace, attached to the workspace's
+persp, and snapshotted into the worktree so the conversation history is
+git-tracked alongside the RTL.
+
+### Roles
+
+Five roles ship out of the box; each maps to a sub-agent template at
+`~/.config/doom/agent-templates/<role>-agent.md`, seeded into the
+worktree's `.claude/agents/` on first use:
+
+| Role           | Sub-agent file              | Scope                                                                  |
+|----------------|-----------------------------|------------------------------------------------------------------------|
+| `architect`    | `architect-agent.md`        | Microarch candidates, PPA tradeoffs, risk assessment, sign-off criteria. |
+| `rtl-review`   | `rtl-review-agent.md`       | Synthesizability, CDC, lint, style review of SystemVerilog.            |
+| `verification` | `verification-agent.md`     | cocotb tests, formal properties, coverage closure.                     |
+| `integration`  | `integration-agent.md`      | SoC bus fabric, memory map, top-level wiring, IP integration.          |
+| `debug`        | `debug-agent.md`            | Triage failing sims / formal CEX; rank root causes.                    |
+
+Each Claude session is told on startup that it is the *X* for workspace
+*Y*, and asked to defer cross-role tasks to a peer Claude by naming the
+sub-agent that should handle them.
+
+### Bindings under `SPC k w *`
+
+| Key | Action |
+|-----|--------|
+| `SPC k w n` | Start (or resume) a Claude for the current workspace; prompts for role. |
+| `SPC k w l` | Tabulated list of every workspace-bound Claude (live + dead). |
+| `SPC k w s` | Pop to one of this workspace's Claudes (prompts for role). |
+| `SPC k w k` | Snapshot, then kill, one role's session in this workspace. |
+| `SPC k w t` | Toggle the primary (first-registered) Claude window for this workspace. |
+| `SPC k w S` | Snapshot every Claude in this workspace to `.claude/sessions/`. |
+| `SPC k w R` | Resume every snapshotted role for this workspace (`claude --resume <id>` per role). |
+
+### Workspace → worktree mapping
+
+The code assumes `workspace-name == ~/eda/wt/<workspace-name>/` (the same
+naming convention §3 already uses). `eda/ws-claude-worktree-root` can be
+rebound if you keep worktrees elsewhere.
+
+### Persistence layout
+
+When `SPC k w S` (or the shutdown hook) fires, each live role gets:
+
+```
+<worktree>/.claude/sessions/<role>.md           # human-readable transcript
+<worktree>/.claude/sessions/<role>.session-id   # UUID for `claude --resume`
+```
+
+Both files are intended to be committed. The `.md` gives diff-able
+history; the `.session-id` lets `SPC k w n` rejoin the exact same Claude
+state on the same machine (resume across machines requires also keeping
+`~/.claude/projects/<flattened-cwd>/<uuid>.jsonl` in sync).
+
+### Typical session lifecycle
+
+```
+1. Enter the workspace (SPC TAB n or eda/new-worktree-for-task).
+2. SPC k w n → architect       → discuss the design candidate.
+3. SPC k w n → rtl-review      → review the proposed module.
+4. SPC k w n → verification    → expand cocotb tests.
+5. SPC k w S                   → snapshot all → .claude/sessions/
+6. git add .claude/ && commit  → conversation history travels with branch.
+7. Tomorrow: SPC k w R         → all three Claudes come back where they were.
+```
+
+### When to use which Claude
+
+- `SPC k k` (generic claude-code.el) — quick one-off question, no role.
+- `SPC k a {r,t,d,c,a}` (per-call agent invocation, no persistence) —
+  one-shot review/test/debug; the Claude is not workspace-bound.
+- `SPC k w *` (this section) — long-lived role conversations the task
+  branch needs to remember.
+
+---
+
+## 11. End of day
 
 Two options:
 
@@ -464,7 +544,7 @@ Persp state for each daemon is saved on shutdown to `~/.config/doom/.persp-state
 
 ---
 
-## 11. Quick reference card (print this)
+## 12. Quick reference card (print this)
 
 ```
 DAEMONS          SPC k d
@@ -481,6 +561,12 @@ CLAUDE           SPC k
 CLAUDE AGENTS    SPC k a
   r rtl-review   t verification  d debug
   c seed-md      a seed-agents
+
+WORKSPACE CLAUDES  SPC k w
+  n new/resume   l list           s switch
+  k kill         t toggle-primary S snapshot-all
+  R resume-all-from-disk
+  Roles: architect / rtl-review / verification / integration / debug
 
 PROJECT (org)    SPC p e
   o open-project.org             r refresh-agenda
@@ -526,7 +612,7 @@ BINARIES (Mac)
 
 ---
 
-## 12. Pitfalls + fixes (lessons from setup)
+## 13. Pitfalls + fixes (lessons from setup)
 
 - **`eda ls` shows nothing but daemon is alive** — fixed in the post-Phase-6 patch (socket-based discovery instead of pgrep).
 - **K in magit deletes the file instead of reverting** — that's evil-collection. For untracked files K removes; for modified files K reverts. Use `X h` (hard reset) for the safe whole-tree revert.
@@ -537,7 +623,7 @@ BINARIES (Mac)
 
 ---
 
-## 13. When you outgrow this setup
+## 14. When you outgrow this setup
 
 These are escape hatches if/when:
 

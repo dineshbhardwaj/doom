@@ -69,13 +69,15 @@
           "Target worktree: "
           (or (and (fboundp 'projectile-project-root) (projectile-project-root))
               "~/eda/wt/"))))
-  (let ((agents-dir (expand-file-name ".claude/agents/" dir)))
+  (let ((agents-dir (expand-file-name ".claude/agents/" dir))
+        (count 0))
     (make-directory agents-dir t)
-    (dolist (name '("rtl-review-agent" "verification-agent" "debug-agent"))
-      (let* ((src (expand-file-name (concat name ".md") eda/agent-template-dir))
-             (dst (expand-file-name (concat name ".md") agents-dir)))
-        (when (file-readable-p src) (copy-file src dst t))))
-    (message "Agents seeded under %s" agents-dir)))
+    (when (file-directory-p eda/agent-template-dir)
+      (dolist (src (directory-files eda/agent-template-dir t "-agent\\.md\\'"))
+        (let ((dst (expand-file-name (file-name-nondirectory src) agents-dir)))
+          (copy-file src dst t)
+          (cl-incf count))))
+    (message "Seeded %d agent(s) under %s" count agents-dir)))
 
 ;; --- 3. SPC k a * — agent-on-this-file commands --------------------------
 ;;

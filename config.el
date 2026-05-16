@@ -547,3 +547,8 @@
 ;; EDA — Claude polish: per-IP CLAUDE.md, agents, gptel (phase 6)
 ;; ════════════════════════════════════════════════════════════════════
 (load! "eda-claude")
+
+;; ════════════════════════════════════════════════════════════════════
+;; EDA — Per-workspace role-specialised Claude sessions (phase 7)
+;; ════════════════════════════════════════════════════════════════════
+(load! "eda-workspace-claude")
