@@ -6,7 +6,7 @@
 
 ## 0. Where you are
 
-All six phases of `EDA-IDE-PLAN.md` are implemented and sitting **uncommitted**
+All seven phases of `EDA-IDE-PLAN.md` are implemented and sitting **uncommitted**
 in `~/.config/doom/`. Manual finishing touches:
 
 | Step | Done? | Command / Action |
@@ -211,7 +211,7 @@ In the new workspace, with the worktree as default-directory:
 |-----|--------------|
 | `SPC p e o` | Creates `project.org` from template; opens it |
 | `SPC k a c` | Pick `pcie` → writes `CLAUDE.md` (PCIe-specific) |
-| `SPC k a a` | Drops `.claude/agents/{rtl-review,verification,debug}-agent.md` |
+| `SPC k a a` | Copies every `*-agent.md` from `~/.config/doom/agent-templates/` into the worktree's `.claude/agents/` (currently: architect, rtl-review, verification, integration, debug). |
 
 ### Step 5 — set up per-worktree environment (cocotb / OSS CAD)
 

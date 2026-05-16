@@ -27,7 +27,7 @@ A single editor surface where you can, for any task in your portfolio:
 ### 1.3 How to read this plan
 
 - Sections 1-3 are orientation. Read them first.
-- Sections 4-10 are the **six phases** of execution. Do them in order. Each phase ends with a still-working Emacs and a tested rollback.
+- Sections 4-11 are the **seven phases** of execution. Do them in order. Each phase ends with a still-working Emacs and a tested rollback.
 - Sections 11-13 are reference (Brewfile, keybinding table, sources).
 - Sections 14-15 are open questions and rollback.
 
@@ -287,10 +287,17 @@ Tarball survives `rm -rf .git`; git history survives a partial revert chain. Bot
 ├── eda-sim.el                       # new in phase 5 — sim/wave/formal wrappers
 ├── eda-tasks.el                     # new in phase 4 — project.org agenda
 ├── eda-claude.el                    # new in phase 6 — CLAUDE.md + gptel
+├── eda-workspace-claude.el          # new in phase 7 — per-workspace role Claudes
 ├── CLAUDE-templates/                # new in phase 6 — per-IP CLAUDE.md seeds
 │   ├── soc.md
 │   ├── pcie.md
 │   └── ucie.md
+├── agent-templates/                 # new in phase 6, expanded in phase 7
+│   ├── rtl-review-agent.md          # phase 6
+│   ├── verification-agent.md        # phase 6
+│   ├── debug-agent.md               # phase 6
+│   ├── architect-agent.md           # phase 7
+│   └── integration-agent.md         # phase 7
 ├── snippets/                        # yasnippet — verilog templates (phase 2)
 │   └── verilog-mode/
 ├── elfeed.score                     # untouched
@@ -440,7 +447,7 @@ brew "graphviz"
 cask "gtkwave"
 ```
 
-Recording the Brewfile makes section 11 trivial later.
+Recording the Brewfile makes section 12 trivial later.
 
 ### 4.5 Phase 0 rollback
 
@@ -2112,21 +2119,24 @@ Do NOT propose a fix until you have ruled in or out the top cause with data.
     (message "Seeded CLAUDE.md from %s -> %s" src dst)))
 
 (defun eda/seed-claude-agents (&optional dir)
-  "Drop the three default subagents into DIR/.claude/agents/."
+  "Drop every *-agent.md template into DIR/.claude/agents/ (auto-discovers).
+Updated in phase 7 to auto-discover the templates instead of using a
+hardcoded list, so architect-agent.md and integration-agent.md are
+picked up automatically."
   (interactive
    (list (read-directory-name "Target worktree: "
                               (or (and (fboundp 'projectile-project-root)
                                        (projectile-project-root))
                                   "~/eda/wt/"))))
-  (let ((agents-dir (expand-file-name ".claude/agents/" dir)))
+  (let ((agents-dir (expand-file-name ".claude/agents/" dir))
+        (count 0))
     (make-directory agents-dir t)
-    (dolist (name '("rtl-review-agent" "verification-agent" "debug-agent"))
-      (let* ((src (expand-file-name (concat name ".md")
-                                    (expand-file-name "agent-templates/"
-                                                      doom-user-dir)))
-             (dst (expand-file-name (concat name ".md") agents-dir)))
-        (when (file-readable-p src) (copy-file src dst t))))
-    (message "Agents in %s" agents-dir)))
+    (when (file-directory-p eda/agent-template-dir)
+      (dolist (src (directory-files eda/agent-template-dir t "-agent\\.md\\'"))
+        (let ((dst (expand-file-name (file-name-nondirectory src) agents-dir)))
+          (copy-file src dst t)
+          (cl-incf count))))
+    (message "Seeded %d agent(s) under %s" count agents-dir)))
 
 ;; --- 3. SPC k a * — agent-on-this-file commands ---------------------------
 
@@ -2219,7 +2229,209 @@ rm -f eda-claude.el
 
 ---
 
-## 11. Reference: Tool install commands (consolidated Brewfile)
+## 11. Phase 7 — Workspace-bound role-specialised Claude sessions
+
+Goal: each Doom workspace (persp = one task = one worktree) can host
+**multiple Claude sessions of its own**, each bound to a role drawn from
+`architect / rtl-review / verification / integration / debug`. Sessions
+attach to the workspace's persp, use the matching sub-agent template
+from `~/.config/doom/agent-templates/`, and snapshot into the worktree
+so the conversation history is git-tracked.
+
+Motivation: phase 6's `SPC k a *` commands are one-shot — they fire a
+single agent invocation against `claude-code.el`'s global session and
+have no persistence per task. With 40 simultaneous tasks, the previous
+model conflates conversations from different IPs into a single buffer.
+Phase 7 binds a Claude (or several) to each workspace and persists the
+transcript per role.
+
+### 11.1 Role → sub-agent mapping
+
+| Role           | Sub-agent template                | Scope                                                                  |
+|----------------|-----------------------------------|------------------------------------------------------------------------|
+| `architect`    | `agent-templates/architect-agent.md`    | Microarch candidates, PPA tradeoffs, risk assessment, sign-off criteria. |
+| `rtl-review`   | `agent-templates/rtl-review-agent.md`   | Synthesizability, CDC, lint, style review of SystemVerilog (existing).  |
+| `verification` | `agent-templates/verification-agent.md` | cocotb tests, formal properties, coverage closure (existing).           |
+| `integration`  | `agent-templates/integration-agent.md`  | SoC bus fabric, memory map, top-level wiring, IP integration.           |
+| `debug`        | `agent-templates/debug-agent.md`        | Triage failing sims / formal CEX; rank root causes (existing).          |
+
+`architect-agent.md` and `integration-agent.md` are new in phase 7; the
+other three carry over from phase 6 untouched.
+
+### 11.2 `~/.config/doom/agent-templates/architect-agent.md`
+
+```markdown
+---
+name: architect-agent
+description: Microarchitecture decisions, PPA tradeoffs, risk assessment, sign-off criteria
+tools: Read, Grep, Glob, Bash
+model: opus
+---
+
+You are a chief microarchitect for a digital ASIC team. When the user
+presents an architecture question or a block-level RTL proposal:
+
+1. State the design candidates (at least two) with a one-line description
+   of each.
+2. Estimate the PPA delta for every candidate.
+3. List the top three risks per candidate.
+4. Recommend ONE candidate with a one-paragraph justification.
+5. Define sign-off criteria.
+
+Do NOT write RTL or testbenches yourself — defer those to the
+`rtl-review-agent` and `verification-agent` peers in this workspace.
+```
+
+(Body abridged here; full text in the file.)
+
+### 11.3 `~/.config/doom/agent-templates/integration-agent.md`
+
+```markdown
+---
+name: integration-agent
+description: SoC IP integration — bus fabric, memory maps, IP-XACT, top-level wiring
+tools: Read, Edit, Write, Grep, Glob, Bash
+model: opus
+---
+
+You are a chip-level integration engineer. When asked to integrate an IP
+block into a SoC top, work in this order:
+
+1. Inspect the IP's IP-XACT description.
+2. Plan the bus-fabric attachment (AXI/AHB/APB, CDC).
+3. Allocate address space in the SoC memory map; update `docs/memory-map.md`.
+4. Wire the IP at the top level — instantiate, connect, register-map.
+5. Add a chip-level smoke test (register R/W + AXI transaction).
+```
+
+(Body abridged here; full text in the file.)
+
+### 11.4 Auto-discovery of agent templates
+
+`eda/seed-claude-agents` in phase 6 used a hardcoded list of three role
+names. Phase 7 changes it to walk `eda/agent-template-dir` for every
+`*-agent.md` so that adding a new role template is a no-code change:
+
+```elisp
+(defun eda/seed-claude-agents (&optional dir)
+  "Drop every *-agent.md template into DIR/.claude/agents/ (auto-discovers)."
+  (interactive
+   (list (read-directory-name "Target worktree: "
+                              (or (and (fboundp 'projectile-project-root)
+                                       (projectile-project-root))
+                                  "~/eda/wt/"))))
+  (let ((agents-dir (expand-file-name ".claude/agents/" dir))
+        (count 0))
+    (make-directory agents-dir t)
+    (when (file-directory-p eda/agent-template-dir)
+      (dolist (src (directory-files eda/agent-template-dir t "-agent\\.md\\'"))
+        (let ((dst (expand-file-name (file-name-nondirectory src) agents-dir)))
+          (copy-file src dst t)
+          (cl-incf count))))
+    (message "Seeded %d agent(s) under %s" count agents-dir)))
+```
+
+### 11.5 `~/.config/doom/eda-workspace-claude.el` — design
+
+See the file for the full ~290-line listing. Public surface:
+
+| Function                       | Binding         | Effect                                                              |
+|--------------------------------|-----------------|---------------------------------------------------------------------|
+| `eda/ws-claude-new role`       | `SPC k w n`     | Start (or resume from `.session-id`) a Claude for ROLE in the current workspace. |
+| `eda/ws-claude-list`           | `SPC k w l`     | Tabulated buffer listing every workspace-bound Claude.              |
+| `eda/ws-claude-switch`         | `SPC k w s`     | Pop to one of the current workspace's Claudes (by role).            |
+| `eda/ws-claude-kill`           | `SPC k w k`     | Snapshot, then kill, one role's session.                            |
+| `eda/ws-claude-toggle`         | `SPC k w t`     | Toggle the primary Claude window's visibility.                      |
+| `eda/ws-claude-snapshot`       | `SPC k w S`     | Snapshot every Claude in the current workspace to `.claude/sessions/`. |
+| `eda/ws-claude-resume-all`     | `SPC k w R`     | Spawn one Claude per `.session-id` file in this workspace.          |
+
+Internal helpers worth noting:
+
+- `eda/ws-claude--spawn` overrides `claude-code--directory` and
+  `claude-code--prompt-for-instance-name` via `cl-letf` so we can drive
+  `claude-code--start` to (a) root the session at the worktree path and
+  (b) name the instance after the role, producing buffer names of the
+  form `*claude:~/eda/wt/<task>:<role>*` — `claude-code.el`'s native
+  multi-instance buffer naming.
+- `eda/ws-claude--latest-session-id` reads
+  `~/.claude/projects/<flattened-cwd>/*.jsonl`, sorts by mtime, returns
+  the most recent UUID. Used by snapshot to write the `.session-id`
+  pointer file.
+- `kill-emacs-hook` is hooked for best-effort auto-snapshot on shutdown.
+
+The workspace ↔ worktree mapping is `name → ~/eda/wt/<name>/`. Rebind
+`eda/ws-claude-worktree-root` if you keep worktrees elsewhere.
+
+### 11.6 Wiring in `config.el`
+
+```elisp
+;; ════════════════════════════════════════════════════════════════════
+;; EDA — Per-workspace role-specialised Claude sessions (phase 7)
+;; ════════════════════════════════════════════════════════════════════
+(load! "eda-workspace-claude")
+```
+
+Loaded *after* `eda-claude` so `eda/agent-template-dir` is bound when
+`eda/ws-claude--ensure-agents` runs.
+
+### 11.7 Persistence layout
+
+When a snapshot fires:
+
+```
+<worktree>/.claude/agents/<role>-agent.md      # idempotent copy of template
+<worktree>/.claude/sessions/<role>.md          # human-readable transcript
+<worktree>/.claude/sessions/<role>.session-id  # UUID for `claude --resume`
+```
+
+Both `agents/` and `sessions/` are intended to be **committed**. The
+`.md` is the diff-friendly conversation transcript; the `.session-id`
+lets `claude --resume <uuid>` rejoin the same in-memory state on the
+same machine. Cross-machine resume requires also keeping
+`~/.claude/projects/<flattened-cwd>/<uuid>.jsonl` in sync (out of scope
+for this phase — call it phase 8 if/when needed).
+
+### 11.8 Keybinding collision audit — `SPC k w *`
+
+Existing under `SPC k` (after phase 6):
+`k`, `c`, `R`, `r`, `b`, `s`, `S`, `t`, `K`, `e`, `v`, `T`, `x`, `d` (phase 3), `a` (phase 6).
+
+`w` was unused — safe.
+
+### 11.9 Phase 7 sanity test
+
+1. From inside a daemon, create or attach a workspace `pcie-foo` whose
+   worktree is `~/eda/wt/pcie-foo/`.
+2. `SPC k w n` → pick `architect` → a Claude buffer
+   `*claude:~/eda/wt/pcie-foo:architect*` opens with a bootstrap prompt
+   declaring its role.
+3. `SPC k w n` → pick `rtl-review` → a second buffer opens for the same
+   workspace.
+4. `SPC k w l` → both buffers listed in `*Workspace Claudes*`.
+5. `SPC k w S` → `~/eda/wt/pcie-foo/.claude/sessions/{architect,rtl-review}.md`
+   and matching `.session-id` files exist.
+6. Restart the daemon (`eda restart`) and re-enter the workspace.
+   `SPC k w R` → both Claudes are spawned again with `--resume <uuid>`.
+
+### 11.10 Phase 7 rollback
+
+```bash
+cd ~/.config/doom
+git revert HEAD                 # reverts the phase-7 commit
+rm -f eda-workspace-claude.el
+rm -f agent-templates/architect-agent.md
+rm -f agent-templates/integration-agent.md
+# Leave any per-worktree .claude/sessions/ alone — they're just data,
+# and they're already committed to whatever branch needs them.
+```
+
+If only the auto-discovery change in `eda/seed-claude-agents` is
+unwanted (e.g. you want only the 3 phase-6 agents seeded again), revert
+just the `eda-claude.el` hunk from the same commit.
+
+---
+
+## 12. Reference: Tool install commands (consolidated Brewfile)
 
 ```ruby
 # ~/.config/doom/Brewfile
@@ -2276,11 +2488,11 @@ npm install -g @imc-trading/svlangserver                                # MIT
 
 ---
 
-## 12. Reference: Keybinding cheatsheet
+## 13. Reference: Keybinding cheatsheet
 
 Legend: NEW = added by this plan. EXISTING = present today and untouched.
 
-### 12.1 Existing (untouched)
+### 13.1 Existing (untouched)
 
 | Prefix | Key | Command | What it does |
 |--------|-----|---------|--------------|
@@ -2311,7 +2523,7 @@ Legend: NEW = added by this plan. EXISTING = present today and untouched.
 | Org capture | `w` | template | UnImportant-UnUrgent -> life.org (EXISTING) |
 | Org capture | `x` | template | Raw -> life.org (EXISTING) |
 
-### 12.2 New (added by this plan)
+### 13.2 New (added by this plan)
 
 | Prefix | Key | Command | What it does | Phase |
 |--------|-----|---------|--------------|-------|
@@ -2327,7 +2539,14 @@ Legend: NEW = added by this plan. EXISTING = present today and untouched.
 | `SPC k a` | `t` | `eda/claude-agent-write-tb` | Verification agent | 6 NEW |
 | `SPC k a` | `d` | `eda/claude-agent-debug-fail` | Debug agent on log | 6 NEW |
 | `SPC k a` | `c` | `eda/seed-claude-md` | Seed CLAUDE.md | 6 NEW |
-| `SPC k a` | `a` | `eda/seed-claude-agents` | Seed .claude/agents/ | 6 NEW |
+| `SPC k a` | `a` | `eda/seed-claude-agents` | Seed .claude/agents/ (auto-discover in phase 7) | 6 NEW |
+| `SPC k w` | `n` | `eda/ws-claude-new` | New / resume workspace Claude (picks role) | 7 NEW |
+| `SPC k w` | `l` | `eda/ws-claude-list` | List every workspace-bound Claude | 7 NEW |
+| `SPC k w` | `s` | `eda/ws-claude-switch` | Pop to one of this workspace's Claudes | 7 NEW |
+| `SPC k w` | `k` | `eda/ws-claude-kill` | Snapshot-then-kill one role | 7 NEW |
+| `SPC k w` | `t` | `eda/ws-claude-toggle` | Toggle primary Claude window | 7 NEW |
+| `SPC k w` | `S` | `eda/ws-claude-snapshot` | Snapshot all to .claude/sessions/ | 7 NEW |
+| `SPC k w` | `R` | `eda/ws-claude-resume-all` | Resume all from .session-id snapshots | 7 NEW |
 | `SPC p e` | `o` | `eda/ensure-project-org` | Create/open project.org | 4 NEW |
 | `SPC p e` | `r` | `eda/refresh-agenda-files` | Re-scan worktrees | 4 NEW |
 | `SPC p e` | `t` | (lambda capture `pt`) | TODO -> project.org | 4 NEW |
@@ -2348,13 +2567,13 @@ Legend: NEW = added by this plan. EXISTING = present today and untouched.
 | Org capture | `pd` | template | Project debug log | 4 NEW |
 | Org capture | `pq` | template | Project question | 4 NEW |
 
-### 12.3 Collision-free guarantee
+### 13.3 Collision-free guarantee
 
 The audit covers all keys at the second level under `SPC k`, `SPC m`, `SPC g`, `SPC o`, `SPC c`, `SPC p` and the top-level org-capture keys (`i u d w x p`). All `NEW` rows occupy keys not currently bound either in the existing `config.el` or stock Doom defaults at the same depth.
 
 ---
 
-## 13. Reference: Web sources consulted
+## 14. Reference: Web sources consulted
 
 URL — 1-line takeaway. All fetched between 2026-05-15 and the document timestamp.
 
@@ -2416,7 +2635,7 @@ URL — 1-line takeaway. All fetched between 2026-05-15 and the document timesta
 
 ---
 
-## 14. Open questions / followups
+## 15. Open questions / followups
 
 Items where the plan could not fully resolve a tradeoff; resolve with user input before committing the related phase.
 
@@ -2436,9 +2655,9 @@ Items where the plan could not fully resolve a tradeoff; resolve with user input
 
 ---
 
-## 15. Rollback procedures
+## 16. Rollback procedures
 
-### 15.1 Per-phase rollback
+### 16.1 Per-phase rollback
 
 Every phase ends with a git commit in `~/.config/doom`. Rollback is `git revert <SHA>` plus the targeted brew/file cleanup listed at the end of each phase.
 
@@ -2451,7 +2670,7 @@ doom sync                                  # if packages.el changed
 # Then run any uninstall steps from the phase's rollback section.
 ```
 
-### 15.2 Full rollback (nuke and pave)
+### 16.2 Full rollback (nuke and pave)
 
 ```bash
 # 1. Stop all EDA daemons
@@ -2482,7 +2701,7 @@ doom sync
 doom doctor
 ```
 
-### 15.3 Sanity check after rollback
+### 16.3 Sanity check after rollback
 
 After a full rollback you should observe:
 
