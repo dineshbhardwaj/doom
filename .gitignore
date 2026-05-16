@@ -2,8 +2,9 @@
 .local/
 .cache/
 
-# Per-daemon persp state (machine-local)
-.persp-state-*.el
+# Per-daemon persp state (machine-local). Trailing `*` catches persp-mode's
+# rotated/numbered variants too (e.g. .persp-state-soc.el1).
+.persp-state-*.el*
 
 # EDA daemon registry (machine-local — contains absolute home paths)
 eda-registry.el
