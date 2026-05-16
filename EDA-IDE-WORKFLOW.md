@@ -74,29 +74,53 @@ Inside the frame:
 | `SPC g g` | Magit status of the current worktree |
 | `SPC b B` | Cross-workspace buffer picker |
 
-### 2.1 Binding a daemon to a git repository
-
-You can pin a daemon to a specific repo at creation time so the daemon's
-`:root` is guaranteed to be a checkout of that remote:
+### 2.1 Spawning a daemon — `eda new` in detail
 
 ```bash
 # eda new <name> [path] [ip-family] [repo-url]
-eda new pcie ~/eda/pcie-main pcie  https://github.com/acme/pcie.git
+eda new pcie                                                            # minimal
+eda new pcie ~/eda/pcie-main pcie  https://github.com/acme/pcie.git     # pinned
 eda new ucie ~/eda/ucie-main ucie  git@github.com:acme/ucie.git
 ```
 
-Rules enforced by `eda new`:
+Arguments:
 
-| `path` state                            | Action                                                  |
-|-----------------------------------------|---------------------------------------------------------|
-| missing / empty + `repo-url` given      | `git clone <repo-url> <path>`                           |
+| Arg            | Required | Default          | Notes                                                                                   |
+|----------------|----------|------------------|-----------------------------------------------------------------------------------------|
+| `<name>`       | yes      | —                | Must match `[a-z0-9][a-z0-9-]{0,31}`. Refused if a daemon by that name is already alive. |
+| `[path]`       | no       | `~/eda/wt/`      | Becomes the daemon's `default-directory`; clone target when `repo-url` is given.        |
+| `[ip-family]`  | no       | same as `<name>` | Stored as a symbol in the registry; shown in `SPC k d l`.                               |
+| `[repo-url]`   | no       | (no binding)     | When given, pins the daemon's `:root` to a checkout of this remote — see below.         |
+
+Repo-binding rules (apply only when `repo-url` is given):
+
+| `path` state                             | Action                                                  |
+|------------------------------------------|---------------------------------------------------------|
+| missing / empty                          | `git clone <repo-url> <path>`                           |
 | existing git repo whose `origin` matches | reused as-is                                            |
-| existing git repo, `origin` mismatch    | **refused** — fix the remote or pick a different path   |
-| non-empty, not a git repo               | **refused** — move the path first                       |
+| existing git repo, `origin` mismatch     | **refused** — fix the remote or pick a different path   |
+| non-empty, not a git repo                | **refused** — move the path first                       |
 
-The binding is recorded as `:repo "<url>"` in `~/.config/doom/eda-registry.el`
-and shown in the **Repo** column of `SPC k d l` (list daemons). The interactive
-`SPC k d n` (`eda/new-daemon`) also prompts for the repo URL.
+No `repo-url`: `path` is created with `mkdir -p` (if missing) and the daemon
+spawns there with `:repo` left as `nil`.
+
+Side effects per spawn:
+
+- `emacs --bg-daemon=<name>` started with cwd = `path`.
+- Logs go to `~/.cache/eda/<name>.log` (handy when bring-up fails before any UI is up).
+- Registry entry `(<name> :root <path> :ip-family <family> :repo <url|nil> :created … :notes "")` appended to `~/.config/doom/eda-registry.el`.
+
+**Bootstrap caveat** — the shell wrapper writes the registry entry by sending
+elisp to *another* already-running daemon. On the very first spawn (no daemon
+alive yet), the new daemon comes up but **no registry entry is written**.
+Backfill it with `SPC k d n` from inside the new daemon (same name + values) —
+that path writes the registry directly. Subsequent `eda new` calls are fine
+because the previously-spawned daemon serves as the elisp target.
+
+The binding is shown in the **Repo** column of `SPC k d l`. The interactive
+`SPC k d n` (`eda/new-daemon`) prompts, in order, for: name → root → ip-family
+(seeded with the name) → repo URL (blank = none) → notes; it has no bootstrap
+caveat because it writes the registry directly inside the daemon you're in.
 
 Worktree creation (`SPC k d w`) defaults to the bound daemon's `:root`, so the
 repo prompt is one-keystroke (`RET`) when you're already in the right daemon.
