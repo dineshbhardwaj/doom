@@ -5,6 +5,9 @@
 # Per-daemon persp state (machine-local)
 .persp-state-*.el
 
+# EDA daemon registry (machine-local — contains absolute home paths)
+eda-registry.el
+
 # Compiled elc
 *.elc
 

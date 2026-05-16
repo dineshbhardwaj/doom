@@ -62,3 +62,27 @@
 (package! exec-path-from-shell)
 (package! eat)
 (package! transient)       ;; required by claude-code menus (usually already pulled in by magit)
+
+;; ─────────────────────────────────────────────────────────────────
+;; EDA IDE additions (phase 1)
+;; ─────────────────────────────────────────────────────────────────
+
+;; SystemVerilog ecosystem
+(package! verilog-ts-mode)
+(package! verilog-ext)
+(package! treesit-auto)              ; keep treesit grammars in sync
+
+;; LLM second layer (claude-code.el already covers the agentic side)
+(package! gptel)
+
+;; Magit augmentation
+(package! magit-todos)
+
+;; Org-mode polish (used by per-task project.org workflow in phase 4)
+(package! org-modern)
+(package! org-super-agenda)
+
+;; Misc QoL
+(package! ws-butler)                 ; trim trailing whitespace on save (RTL hygiene)
+(package! envrc)                     ; explicit pin even though :tools direnv pulls it
+(package! consult-yasnippet)         ; vertico-friendly snippet picker
