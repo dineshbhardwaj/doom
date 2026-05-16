@@ -125,7 +125,7 @@ caveat because it writes the registry directly inside the daemon you're in.
 Worktree creation (`SPC k d w`) defaults to the bound daemon's `:root`, so the
 repo prompt is one-keystroke (`RET`) when you're already in the right daemon.
 
-### 2.2 Authentication — talk to the remote from inside the daemon
+### 2.2 Authentication — `eda auth-setup` in detail
 
 One-time setup so HTTPS push/pull and Emacs Forge (PRs/issues) work without
 re-prompting:
@@ -134,16 +134,33 @@ re-prompting:
 eda auth-setup
 ```
 
-What it does (idempotent — safe to re-run):
+**Prerequisite** — `gh` (GitHub CLI) must be on `$PATH`. If it isn't, the
+command exits immediately with `gh CLI not found. Install: brew install gh`.
 
-1. `gh auth status`; if not logged in, runs `gh auth login` (browser flow).
-2. `gh auth setup-git` — configures git's credential helper to use `gh`, so
-   any `git clone/push/pull` over HTTPS just works (credentials live in the
-   macOS keychain via `gh`).
-3. Writes a Forge entry `machine api.github.com login <user>^forge password <token>`
-   into `~/.authinfo.gpg` (or `~/.authinfo` with `chmod 600` if no default GPG
-   key exists). Token is harvested via `gh auth token`. Forge in Emacs reads
-   this for the GitHub API (PRs, issues, reviews).
+What runs, in order (each step exits the command on failure):
+
+| Step | Command                                     | Effect                                                                                                                                                                                                                          |
+|------|---------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 1    | `gh auth status`                            | If already authenticated, skips step 2.                                                                                                                                                                                          |
+| 2    | `gh auth login`                             | Browser flow; only runs when step 1 reports "not logged in".                                                                                                                                                                     |
+| 3    | `gh auth setup-git`                         | Sets git's credential helper to `!gh auth git-credential` so plain `git clone/push/pull` over HTTPS pulls the token from `gh` (which itself stores it in the macOS keychain or `~/.config/gh/hosts.yml`, depending on step 2).   |
+| 4    | `gh api user --jq .login` / `gh auth token` | Fetches the GitHub login and a PAT for the Forge entry.                                                                                                                                                                          |
+| 5    | append Forge entry                          | Adds `machine api.github.com login <user>^forge password <token>` to `~/.authinfo[.gpg]` — see file-selection below.                                                                                                             |
+
+Forge file selection (step 5):
+
+- If `gpg --list-secret-keys` reports at least one secret key → writes to
+  `~/.authinfo.gpg`, encrypted via `gpg --default-recipient-self`.
+- Otherwise falls back to plain `~/.authinfo` (and `chmod 600`s it).
+
+The `^forge` suffix on the login is Forge's convention — it distinguishes the
+GitHub API token (used for issues / PRs / reviews) from any plain
+`machine api.github.com` credential another tool may have written.
+
+**Idempotency** — before step 5 writes, the target file is decrypted (if
+`.gpg`) and grep'd for `machine api.github.com login <user>^forge`. If
+present, the command prints `Forge entry for <user>^forge already present`
+and exits without modifying the file. Steps 1–4 are also re-runnable safely.
 
 Verify after setup:
 
@@ -152,6 +169,14 @@ git ls-remote https://github.com/<you>/<some-repo>   # should not prompt
 # Inside Emacs, in a magit status of a GitHub repo:
 M-x forge-pull                                       # populates issues/PRs
 ```
+
+**When something is off:**
+
+- `gh auth status` shows the current state of GitHub authentication.
+- To rotate the Forge token: remove the `^forge` line from `~/.authinfo[.gpg]`
+  and re-run `eda auth-setup`.
+- Forge silently ignores `~/.authinfo` if its mode isn't `0600` — re-running
+  fixes it, or `chmod 600 ~/.authinfo` manually.
 
 ---
 
