@@ -1,219 +1,128 @@
-;;; elfeed.score — Unified scoring for three-tier feed structure
-;;;
-;;; PHILOSOPHY:
-;;;   Tier 1 (semiconductor work domain)  →  STRONG BOOSTS
-;;;   Tier 2 (secondary active interests) →  MILD or NO adjustment
-;;;   Tier 3 (parked :ignore: sections)   →  not imported, so no scoring
-;;;
-;;; Higher = top of list. Negative = bottom. Default score = 0.
-;;; Reload after editing: press "=" inside *elfeed-search* buffer.
-
-(("title"
-  ;; ============================================================
-  ;; TIER 1 BOOSTS — Work-domain signals
-  ;; ============================================================
-
-  ;; Open Silicon / EDA (highest priority)
-  ("OpenROAD"              150 S)
-  ("OpenLane"              120 S)
-  ("Tiny Tapeout"          100 S)
-  ("SkyWater"               90 S)
-  ("RISC-V"                 90 s)
-  ("chiplet"                80 s)
-  ("tapeout"                70 s)
-
-  ;; India Semiconductor Mission & ecosystem
-  ("ISM 2.0"               150 S)
-  ("Semicon India"         130 S)
-  ("India Semiconductor"   120 s)
-  ("Tata Electronics"      100 s)
-  ("Tata Semiconductor"    100 s)
-  ("Micron Sanand"         100 s)
-  ("MeitY"                  80 s)
-  ("Mindgrove"              70 s)
-  ("InCore"                 70 s)
-  ("SignalChip"             70 s)
-  ("Saankhya Labs"          70 s)
-  ("FermionIC"              70 s)
-
-  ;; Core semi / VLSI
-  ("VLSI"                   70 s)
-  ("EDA"                    50 s)
-  ("fabless"                60 s)
-  ("foundry"                40 s)
-  ("TSMC"                   50 s)
-  ("ASML"                   50 s)
-  ("lithography"            40 s)
-
-  ;; AI-in-semi high-signal names
-  ("SemiAnalysis"          100 S)
-  ("Dylan Patel"           100 s)
-  ("Tenstorrent"            80 s)
-  ("Cerebras"               80 s)
-  ("Groq"                   70 s)
-  ("NVCell"                 80 s)
-  ("chip design"            50 s)
-  ("AI accelerator"         60 s)
-  ("NPU"                    40 s)
-
-  ;; Funding signals
-  ("Series A"               50 s)
-  ("Series B"               50 s)
-  ("Series C"               40 s)
-  ("Series D"               40 s)
-  ("raised"                 40 s)
-  ("seed funding"           40 s)
-  ("pre-Series"             40 s)
-  ("acqui"                  30 s)  ; acquired/acquisition
-
-  ;; PCB / embedded signals
-  ("PCB"                    30 s)
-  ("SMT"                    25 s)
-  ("FPGA"                   40 s)
-  ("embedded linux"         30 s)
-  ("microcontroller"        25 s)
-
-  ;; ============================================================
-  ;; TIER 1 DEMOTES — Niche supplements within work domain
-  ;; (still shown, but ranked lower)
-  ;; ============================================================
-  ("photonics"             -30 s)
-  ("compound semi"         -30 S)
-  ("GaN"                   -20 s)
-  ("SiC"                   -20 s)
-  ("RF"                    -25 s)
-  ("analog"                -15 s)
-  ("quantum"               -40 s)
-  ("MEMS"                  -30 s)
-  ("LED"                   -35 s)
-  ("OLED"                  -25 s)
-
-  ;; Noisy general-AI topics not chip-related
-  ("ChatGPT"               -40 s)
-  ("prompt engineering"    -30 s)
-  ("LLM"                   -10 s)   ; mild — still relevant occasionally
-
-  ;; ============================================================
-  ;; TIER 2 MILD ADJUSTMENTS — Secondary interests
-  ;; (kept readable but not crowding work content)
-  ;; ============================================================
-
-  ;; Signals I want to see from general news/tech
-  ("Anthropic"              20 S)
-  ("privacy"                15 s)
-  ("open source"            15 s)
-
-  ;; Cruft to push down even from trusted sources
-  ("royal"                 -30 s)
-  ("celebrity"             -30 s)
-  ("sports"                -20 s)
-  ("cricket score"         -25 s))
-
- ("content"
-  ;; Body-text matches — weaker weights by design
-  ("OpenROAD"                40 s)
-  ("ISM 2.0"                 50 s)
-  ("India Semiconductor Mission" 40 s)
-  ("Indian startup"          40 s)
-  ("fab"                     20 s)
-  ("tapeout"                 30 s)
-  ("RTL to GDS"              50 s)
-  ("chip design"             20 s)
-  ("semiconductor fab"       30 s)
-
-  ;; Demotes in body
-  ("photonics"              -20 s)
-  ("quantum computing"      -25 s)
-  ("automotive grade"       -15 s))
-
- ("tag"
-  ;; ============================================================
-  ;; TAG-BASED BOOSTS (Tier 1)
-  ;; ============================================================
-  (("opensilicon" "openroad")         100)
-  (("opensilicon" "openlane")          90)
-  (("opensilicon")                     70)
-  (("ai-semi" "analysis")              80)
-  (("ai-semi")                         60)
-  (("india" "startup")                 90)
-  (("india" "govt")                    80)
-  (("india" "deeptech")                80)
-  (("india")                           60)
-  (("semi" "deepdive")                 70)
-  (("semi")                            50)
-  (("vlsi")                            70)
-  (("vlsi" "eda")                      70)
-  (("embedded" "linux")                50)
-  (("embedded")                        40)
-  (("pcb" "mfg")                       40)
-  (("pcb")                             30)
-  (("hn" "opensilicon")                60)
-  (("funding")                         50)
-  (("startup" "funding")               60)
-  (("fabs" "equipment")                40)
-  (("fabs")                            30)
-
-  ;; ============================================================
-  ;; TAG-BASED DEMOTES (Tier 1 niches + Tier 2 keep-but-lower)
-  ;; ============================================================
-  (("specialty")                      -40)
-  (("specialty" "photonics")          -50)
-  (("specialty" "compound")           -40)
-  (("automotive" "europe")            -30)
-  (("research" "arxiv")               -20)
-  (("paywalled")                      -30)
-  (("finance" "wsj")                  -15)
-  (("finance" "ft")                   -15)
-
-  ;; Tier 2 secondary interests — keep but rank below work
-  (("news")                           -10)
-  (("magazine")                       -10)
-  (("technology")                       0)   ; neutral — don't push down
-  (("youtube-misc")                   -30))  ; if you ever re-enable it
-
- ("feed"
-  ;; ============================================================
-  ;; FEED-LEVEL BOOSTS — Trusted high-signal sources
-  ;; ============================================================
-  ("semiengineering.com"      40 s t)
-  ("semianalysis.substack"    50 s t)
-  ("semiwiki.com"             30 s t)
-  ("theopenroadproject"       60 s t)
-  ("tinytapeout.com"          50 s t)
-  ("zerotoasiccourse"         40 s t)
-  ("ism.gov.in"               60 s t)
-  ("pib.gov.in"               30 s t)
-  ("inc42.com"                30 s t)
-  ("entrackr.com"             30 s t)
-  ("yourstory.com"            20 s t)
-  ("electronicsforu.com"      25 s t)
-  ("electronicsb2b"           20 s t)
-  ("eetimes.com"              25 s t)
-  ("edn.com"                  20 s t)
-  ("design-reuse.com"         30 s t)
-  ("github.com"               30 s t)   ; OpenROAD/OpenLane release atoms
-
-  ;; Tier 2 mustreads
-  ("stratechery.com"          20 s t)
-
-  ;; ============================================================
-  ;; FEED-LEVEL DEMOTES — Firehose or off-topic sources
-  ;; ============================================================
-  ("arxiv.org"               -30 s t)
-  ("hackaday.com"            -10 s t)
-  ("omdia.com"               -20 s t)
-  ("photonics.com"           -40 s t)
-  ("compoundsemiconductor"   -40 s t)
-  ("powerelectronicsnews"    -30 s t)
-  ("eenewseurope"            -20 s t)
-
-  ;; Tier 2 — general news, push below work
-  ("techcrunch.com"          -15 s t)   ; useful but firehose
-  ("theverge.com"            -20 s t)
-  ("arstechnica.com"         -10 s t))
-
- ;; ============================================================
- ;; AUTO-MARK-READ THRESHOLD
- ;; Entries scoring below this get marked as read automatically.
- ;; ============================================================
- (mark -100))
+;;; Elfeed score file                                     -*- lisp -*-
+((version 10)
+ ("title" (:text "OpenROAD" :value 150 :type S)
+  (:text "OpenLane" :value 120 :type S)
+  (:text "Tiny Tapeout" :value 100 :type S)
+  (:text "SkyWater" :value 90 :type S)
+  (:text "RISC-V" :value 90 :type s)
+  (:text "chiplet" :value 80 :type s)
+  (:text "tapeout" :value 70 :type s)
+  (:text "ISM 2.0" :value 150 :type S)
+  (:text "Semicon India" :value 130 :type S)
+  (:text "India Semiconductor" :value 120 :type s)
+  (:text "Tata Electronics" :value 100 :type s)
+  (:text "Tata Semiconductor" :value 100 :type s)
+  (:text "Micron Sanand" :value 100 :type s)
+  (:text "MeitY" :value 80 :type s)
+  (:text "Mindgrove" :value 70 :type s)
+  (:text "InCore" :value 70 :type s)
+  (:text "SignalChip" :value 70 :type s)
+  (:text "Saankhya Labs" :value 70 :type s)
+  (:text "FermionIC" :value 70 :type s)
+  (:text "VLSI" :value 70 :type s) (:text "EDA" :value 50 :type s)
+  (:text "fabless" :value 60 :type s)
+  (:text "foundry" :value 40 :type s) (:text "TSMC" :value 50 :type s)
+  (:text "ASML" :value 50 :type s)
+  (:text "lithography" :value 40 :type s)
+  (:text "SemiAnalysis" :value 100 :type S)
+  (:text "Dylan Patel" :value 100 :type s)
+  (:text "Tenstorrent" :value 80 :type s)
+  (:text "Cerebras" :value 80 :type s)
+  (:text "Groq" :value 70 :type s) (:text "NVCell" :value 80 :type s)
+  (:text "chip design" :value 50 :type s)
+  (:text "AI accelerator" :value 60 :type s)
+  (:text "NPU" :value 40 :type s) (:text "Series A" :value 50 :type s)
+  (:text "Series B" :value 50 :type s)
+  (:text "Series C" :value 40 :type s)
+  (:text "Series D" :value 40 :type s)
+  (:text "raised" :value 40 :type s)
+  (:text "seed funding" :value 40 :type s)
+  (:text "pre-Series" :value 40 :type s)
+  (:text "acqui" :value 30 :type s) (:text "PCB" :value 30 :type s)
+  (:text "SMT" :value 25 :type s) (:text "FPGA" :value 40 :type s)
+  (:text "embedded linux" :value 30 :type s)
+  (:text "microcontroller" :value 25 :type s)
+  (:text "photonics" :value -30 :type s)
+  (:text "compound semi" :value -30 :type S)
+  (:text "GaN" :value -20 :type s) (:text "SiC" :value -20 :type s)
+  (:text "RF" :value -25 :type s) (:text "analog" :value -15 :type s)
+  (:text "quantum" :value -40 :type s)
+  (:text "MEMS" :value -30 :type s) (:text "LED" :value -35 :type s)
+  (:text "OLED" :value -25 :type s)
+  (:text "ChatGPT" :value -40 :type s)
+  (:text "prompt engineering" :value -30 :type s)
+  (:text "LLM" :value -10 :type s)
+  (:text "Anthropic" :value 20 :type S)
+  (:text "privacy" :value 15 :type s)
+  (:text "open source" :value 15 :type s)
+  (:text "royal" :value -30 :type s)
+  (:text "celebrity" :value -30 :type s)
+  (:text "sports" :value -20 :type s)
+  (:text "cricket score" :value -25 :type s))
+ ("content" (:text "OpenROAD" :value 40 :type s)
+  (:text "ISM 2.0" :value 50 :type s)
+  (:text "India Semiconductor Mission" :value 40 :type s)
+  (:text "Indian startup" :value 40 :type s)
+  (:text "fab" :value 20 :type s) (:text "tapeout" :value 30 :type s)
+  (:text "RTL to GDS" :value 50 :type s)
+  (:text "chip design" :value 20 :type s)
+  (:text "semiconductor fab" :value 30 :type s)
+  (:text "photonics" :value -20 :type s)
+  (:text "quantum computing" :value -25 :type s)
+  (:text "automotive grade" :value -15 :type s))
+ ("title-or-content")
+ ("tag" (:tags ("opensilicon" "openroad") :value 100)
+  (:tags ("opensilicon" "openlane") :value 90)
+  (:tags ("opensilicon") :value 70)
+  (:tags ("ai-semi" "analysis") :value 80)
+  (:tags ("ai-semi") :value 60) (:tags ("india" "startup") :value 90)
+  (:tags ("india" "govt") :value 80)
+  (:tags ("india" "deeptech") :value 80) (:tags ("india") :value 60)
+  (:tags ("semi" "deepdive") :value 70) (:tags ("semi") :value 50)
+  (:tags ("vlsi") :value 70) (:tags ("vlsi" "eda") :value 70)
+  (:tags ("embedded" "linux") :value 50)
+  (:tags ("embedded") :value 40) (:tags ("pcb" "mfg") :value 40)
+  (:tags ("pcb") :value 30) (:tags ("hn" "opensilicon") :value 60)
+  (:tags ("funding") :value 50)
+  (:tags ("startup" "funding") :value 60)
+  (:tags ("fabs" "equipment") :value 40) (:tags ("fabs") :value 30)
+  (:tags ("specialty") :value -40)
+  (:tags ("specialty" "photonics") :value -50)
+  (:tags ("specialty" "compound") :value -40)
+  (:tags ("automotive" "europe") :value -30)
+  (:tags ("research" "arxiv") :value -20)
+  (:tags ("paywalled") :value -30)
+  (:tags ("finance" "wsj") :value -15)
+  (:tags ("finance" "ft") :value -15) (:tags ("news") :value -10)
+  (:tags ("magazine") :value -10) (:tags ("technology") :value 0)
+  (:tags ("youtube-misc") :value -30))
+ ("authors")
+ ("feed" (:text "semiengineering.com" :value 40 :type s :attr t)
+  (:text "semianalysis.substack" :value 50 :type s :attr t)
+  (:text "semiwiki.com" :value 30 :type s :attr t)
+  (:text "theopenroadproject" :value 60 :type s :attr t)
+  (:text "tinytapeout.com" :value 50 :type s :attr t)
+  (:text "zerotoasiccourse" :value 40 :type s :attr t)
+  (:text "ism.gov.in" :value 60 :type s :attr t)
+  (:text "pib.gov.in" :value 30 :type s :attr t)
+  (:text "inc42.com" :value 30 :type s :attr t)
+  (:text "entrackr.com" :value 30 :type s :attr t)
+  (:text "yourstory.com" :value 20 :type s :attr t)
+  (:text "electronicsforu.com" :value 25 :type s :attr t)
+  (:text "electronicsb2b" :value 20 :type s :attr t)
+  (:text "eetimes.com" :value 25 :type s :attr t)
+  (:text "edn.com" :value 20 :type s :attr t)
+  (:text "design-reuse.com" :value 30 :type s :attr t)
+  (:text "github.com" :value 30 :type s :attr t)
+  (:text "stratechery.com" :value 20 :type s :attr t)
+  (:text "arxiv.org" :value -30 :type s :attr t)
+  (:text "hackaday.com" :value -10 :type s :attr t)
+  (:text "omdia.com" :value -20 :type s :attr t)
+  (:text "photonics.com" :value -40 :type s :attr t)
+  (:text "compoundsemiconductor" :value -40 :type s :attr t)
+  (:text "powerelectronicsnews" :value -30 :type s :attr t)
+  (:text "eenewseurope" :value -20 :type s :attr t)
+  (:text "techcrunch.com" :value -15 :type s :attr t)
+  (:text "theverge.com" :value -20 :type s :attr t)
+  (:text "arstechnica.com" :value -10 :type s :attr t))
+ ("link") ("udf") (mark -100) ("adjust-tags"))
