@@ -346,15 +346,40 @@
   :defer t
   :config
   (setq vterm-max-scrollback 10000
-        vterm-shell (or (executable-find "zsh") "/bin/bash")))
+        vterm-shell (or (executable-find "zsh") "/bin/bash")
+        ;; Snappier redraw — helps with Claude Code's interactive prompts
+        ;; (default 0.1 s leaves cursor / selection visibly lagging).
+        vterm-timer-delay 0.02)
+
+  ;; ESC must reach the TUI inside vterm (Claude Code /btw exit, popup
+  ;; cancel, etc.). Without this, evil swallows the first ESC to switch
+  ;; to normal state and the child process never sees it.
+  (map! :map vterm-mode-map
+        :ie "<escape>" #'vterm-send-escape
+        ;; Explicit way INTO evil normal state for scrollback / yank.
+        :ie "C-\\"     #'evil-normal-state))
+
+;; Belt-and-suspenders: ensure new vterm buffers start in evil emacs
+;; state (no key interception) regardless of what claude-code or other
+;; packages try to do.
+(after! evil
+  (evil-set-initial-state 'vterm-mode 'emacs))
 
 
 ;; ════════════════════════════════════════════════════════════════════
 ;; CLAUDE CODE
 ;; ════════════════════════════════════════════════════════════════════
+;; claude-code defaults to the pure-elisp `eat' terminal backend, which
+;; renders TUI prompts (the question popups, selection lists, etc.) with
+;; visible drift: cursor positioned before the prompt, selection drawn
+;; below, occasional overwrite of the visible region. The libvterm-based
+;; `vterm' backend handles the alternate-screen + rapid redraw cleanly.
+;; After changing this, kill any existing *claude:*<eat> buffer and start
+;; a fresh session with SPC k k — backend choice is buffer-creation-time.
 (use-package! claude-code
   :after vterm
   :config
+  (setq claude-code-terminal-backend 'vterm)
   (claude-code-mode 1))
 
 ;; ════════════════════════════════════════════════════════════════════
