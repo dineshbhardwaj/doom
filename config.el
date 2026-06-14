@@ -552,3 +552,49 @@
 ;; EDA — Per-workspace role-specialised Claude sessions (phase 7)
 ;; ════════════════════════════════════════════════════════════════════
 (load! "eda-workspace-claude")
+
+;; ════════════════════════════════════════════════════════════════════
+;; Terminal (emacs -nw) clipboard — macOS / Terminal.app
+;; ════════════════════════════════════════════════════════════════════
+;; Terminal.app does NOT speak OSC 52, so clipetty / (tty +osc) do nothing.
+;; Since `emacs -nw' runs locally, route the kill-ring straight through
+;; pbcopy/pbpaste. This makes evil yank/paste (yy, p, C-y / M-w) talk to the
+;; macOS clipboard in BOTH directions. The GUI build already does this
+;; natively, so only wire it up on a text terminal frame.
+(when (and (eq system-type 'darwin)
+           (not (display-graphic-p)))
+  (defun +my/pbcopy (text &optional _push)
+    "Copy TEXT to the macOS clipboard via pbcopy."
+    (let ((process-connection-type nil))
+      (let ((proc (start-process "pbcopy" nil "pbcopy")))
+        (process-send-string proc text)
+        (process-send-eof proc))))
+
+  (defun +my/pbpaste ()
+    "Return the macOS clipboard contents via pbpaste."
+    (shell-command-to-string "pbpaste -Prefer txt"))
+
+  (setq interprogram-cut-function   #'+my/pbcopy
+        interprogram-paste-function #'+my/pbpaste)
+
+  ;; Cmd+V (handled by Terminal.app, not Emacs) pastes by "typing" the text,
+  ;; which triggers electric/auto-indent and produces cascading indentation.
+  ;; Bracketed paste wraps the pasted run in ESC[200~ … ESC[201~ so Emacs
+  ;; inserts it verbatim. Emacs enables this on xterm-like terminals; force it
+  ;; on per-frame in case TERM detection misses it.
+  (defun +my/enable-bracketed-paste (&optional frame)
+    (with-selected-frame (or frame (selected-frame))
+      (when (and (not (display-graphic-p))
+                 (fboundp 'xterm--init-bracketed-paste))
+        (xterm--init-bracketed-paste))))
+  (add-hook 'after-make-frame-functions #'+my/enable-bracketed-paste)
+  (+my/enable-bracketed-paste)
+
+  ;; Guaranteed-clean paste: insert the macOS clipboard verbatim, bypassing
+  ;; the terminal's keystroke replay and electric/auto-indent entirely.
+  (defun +my/insert-pbpaste ()
+    "Insert the macOS clipboard contents verbatim at point."
+    (interactive)
+    (insert (+my/pbpaste)))
+  (map! :leader
+        :desc "Paste from macOS clipboard" "i v" #'+my/insert-pbpaste))
