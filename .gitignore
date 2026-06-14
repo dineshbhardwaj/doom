@@ -19,3 +19,6 @@ eda-registry.el
 
 # OS noise
 .DS_Store
+
+# Claude Code local settings / session data
+.claude/
