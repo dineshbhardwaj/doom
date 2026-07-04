@@ -436,6 +436,23 @@ Every task-bound buffer is named `‹basename› · ‹task-slug›`, so `SPC b 
 - **MF2 — Idle subtraction timing:** ✅ **Compute net at report time** + write an audit `:IDLE_ADJ:` note. Raw `CLOCK:` lines stay untouched; overlap remains visible and reversible. (E17)
 - **MF3 — `C-x 0` rebind:** ✅ **Rebind to `eda/grid-restore`** as requested; stock `delete-window` → `SPC w d`. (E15)
 
+### Daemon role revisited (Phase-8 review)
+
+**Surfaced while building Phases 8–11.** The original design made a `emacs --bg-daemon=<ip-family>` the *top of the hierarchy* (`DAEMON → WORKSPACE(task) → WORKTREE`), so the IP family was the primary organizing axis. The org-task engine changes that:
+
+- **The org task is now the axis, not the daemon.** `eda/task-jump`, the pclock engine (E3), the grid (E16) and session binding (E4) all operate *within one Emacs process* and never touch the daemon registry. Agenda already discovers tasks across every worktree regardless of family. So "a daemon per IP family" as the structural axis is now **redundant** — the task layer does that job, finer-grained.
+- **Direct tension with the parallel grid.** The 8-pane grid needs all its Claude sessions in **one process/frame**. Tasks split across per-family daemons *cannot* share a grid — so the "clock 8 things at once, see them together" goal pushes toward a **single Emacs**, the opposite of daemon-per-family.
+- **The client/personal boundary no longer needs a daemon.** The client is a **separate machine** (D1), so that isolation is physical, not process-level.
+
+**Decision (locked): keep the multi-daemon machinery, but demote it from "the axis" to opt-in isolation.**
+
+- **Default = one warm "main" daemon** hosting all tasks. This preserves the still-real benefit of a persistent Emacs (instant `emacsclient -c` attach vs a cold heavy Doom+LSP+tree-sitter start) and lets any set of tasks share one grid.
+- **Extra daemons = opt-in, for a genuine hard wall only** — a flaky toolchain / runaway sim you want crash- or resource-isolated, or an experiment you want quarantined. Not the routine structure.
+- **Restricted client → single Emacs, no daemon fleet** (the portability layer, E11/Phase 16, already skips the daemon/launchd stack there).
+- `eda-daemons.el` stays **as-is** (useful, harmless); only its *recommended default usage* changes. `eda/new-daemon`/`SPC k d *` remain the escape hatch when isolation is actually wanted.
+
+Implication for later phases: the grid (E16) assumes tasks you want side-by-side live in the **same** daemon; Phase 16 documents "one main daemon" as the default and multi-daemon as opt-in.
+
 ---
 
 ## 8. Reversible phased rollout (continues your Phase 0–7 style)
