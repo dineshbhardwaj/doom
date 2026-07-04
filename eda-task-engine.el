@@ -25,8 +25,11 @@
 ;;;   `eda/task-jump'  — the SINGLE POINT OF CONTACT: from any org/agenda line,
 ;;;                      switch to the task's workspace and raise (or resume)
 ;;;                      its Claude session.
-;;; Clock-in/state-change triggers, the DONE-gate, grids and sync arrive in
-;;; later phases and build on these helpers.
+;;; Phase 9 adds session binding (E4): `org-clock-in-hook' and
+;;; `org-after-todo-state-change-hook' funnel into `eda/task-start', which
+;;; resumes-by-property, writes a per-task context file the worktree CLAUDE.md
+;;; imports, and logs Session/Resume lines. The DONE-gate, parallel clocks,
+;;; grids and sync arrive in later phases and build on these helpers.
 
 (require 'org)
 (require 'cl-lib)
@@ -38,6 +41,14 @@
 (defvar eda/ws-claudes)
 (declare-function eda/ws-claude--start "eda-workspace-claude")
 (declare-function eda/ws-claude--uuid "eda-workspace-claude")
+
+;; Phase 9 — session-binding config.
+(defvar eda/task-active-states '("IN-PROGRESS" "REVIEW")
+  "TODO states that auto-start/resume an entry's Claude session (E4).")
+(defvar eda/task-autostart-on-state-change t
+  "When non-nil, entering an `eda/task-active-states' state starts the session.")
+(defvar eda/task-autostart-on-clock-in t
+  "When non-nil, clocking into an EDA task starts/resumes its Claude session.")
 
 ;; --- Org clock/log storage: keep notes and clocks in a LOGBOOK drawer ------
 
@@ -235,16 +246,153 @@ is bound — opens the task's project.org."
     (if cmd (progn (kill-new cmd) (message "Copied: %s" cmd))
       (user-error "No :CLAUDE_SESSION: on this task — run `eda/task-init' first"))))
 
+;; --- Phase 9 · session binding (E4) ---------------------------------------
+;;
+;; Triggers (clock-in, TODO→active) funnel into `eda/task-start', which is
+;; idempotent: if the session is already live it just raises it. On a first
+;; start it (re)generates the task-context file, ensures the worktree CLAUDE.md
+;; imports it, logs Session/Resume lines, and resumes-by-property.
+
+(defun eda/task--eda-entry-p ()
+  "Non-nil if the org entry at point is an EDA task (has schema / lives in wt/)."
+  (or (org-entry-get nil "TASK_SLUG" t)
+      (org-entry-get nil "WORKTREE" t)
+      (let ((f (buffer-file-name)))
+        (and f (string-prefix-p (expand-file-name eda/portable-worktree-root)
+                                (expand-file-name f))))))
+
+(defun eda/task-ensure-session-id (marker)
+  "Return the task's session id, generating + storing one if absent."
+  (or (eda/task-session-id marker)
+      (let ((sid (eda/ws-claude--uuid)))
+        (eda/task-set-prop marker "CLAUDE_SESSION" sid)
+        sid)))
+
+(defun eda/task--logbook-has-p (regexp)
+  "Non-nil if REGEXP occurs within the entry at point (its LOGBOOK/body)."
+  (save-excursion
+    (org-back-to-heading t)
+    (let ((end (save-excursion (outline-next-heading) (point))))
+      (re-search-forward regexp end t))))
+
+(defun eda/task--write-context (marker wt)
+  "Write <wt>/.claude/task-context.md capturing the task's intent + notes."
+  (let* ((dir   (expand-file-name ".claude/" wt))
+         (file  (expand-file-name "task-context.md" dir))
+         (title (org-with-point-at marker (org-get-heading t t t t)))
+         (slug  (or (eda/task-prop marker "TASK_SLUG") ""))
+         (role  (or (eda/task-prop marker "CLAUDE_ROLE") ""))
+         (client (or (eda/task-prop marker "CLIENT") ""))
+         (body  (org-with-point-at marker
+                  (save-excursion
+                    (org-back-to-heading t)
+                    (buffer-substring-no-properties
+                     (point) (save-excursion (outline-next-heading) (point)))))))
+    (make-directory dir t)
+    (with-temp-file file
+      (insert (format "# Task context — %s\n\n" title))
+      (insert (format "- Slug: %s\n- Role: %s\n" slug role))
+      (unless (string-empty-p client) (insert (format "- Client: %s\n" client)))
+      (insert (format "- Generated: %s\n\n" (format-time-string "%Y-%m-%d %H:%M")))
+      (insert "## Intent, notes & history (from the org task)\n\n")
+      (insert "```org\n" (string-trim-right body) "\n```\n"))
+    file))
+
+(defun eda/task--ensure-claude-import (wt)
+  "Ensure <wt>/CLAUDE.md `@'-imports the per-task context file (idempotent)."
+  (let* ((claude-md (expand-file-name "CLAUDE.md" wt))
+         (line "@.claude/task-context.md")
+         (existing (and (file-readable-p claude-md)
+                        (with-temp-buffer (insert-file-contents claude-md)
+                                          (buffer-string)))))
+    (unless (and existing (string-match-p (regexp-quote line) existing))
+      (with-temp-buffer
+        (when existing
+          (insert existing)
+          (unless (string-suffix-p "\n" existing) (insert "\n")))
+        (insert "\n<!-- eda-task-engine: per-task context (auto) -->\n" line "\n")
+        (write-region (point-min) (point-max) claude-md nil 'quiet)))))
+
+(defun eda/task--log-session (marker role sid)
+  "Prepend Session/Resume LOGBOOK lines for (ROLE, SID) once per session id."
+  (org-with-point-at marker
+    ;; Key the dedup on the Session marker+id, not the bare id — the id also
+    ;; appears in the :CLAUDE_SESSION: property and would false-match there.
+    (unless (eda/task--logbook-has-p (concat "Session ▶.*" (regexp-quote sid)))
+      (let ((cmd (eda/task-resume-command marker)))
+        (when cmd (eda/task--append-logbook (concat "Resume ▶ " cmd))))
+      (eda/task--append-logbook (format "Session ▶ role=%s id=%s" role sid)))))
+
+;;;###autoload
+(defun eda/task-start (&optional marker)
+  "Start or resume the Claude session for the task at MARKER (or point).
+Idempotent: if the session is already live, just raises it. Otherwise stores
+a session id + role if missing, writes the task-context file and CLAUDE.md
+import, logs Session/Resume lines, switches to the workspace, and resumes the
+session by its stored id (or starts fresh)."
+  (interactive)
+  (setq marker (or marker (eda/task--marker)))
+  (let* ((wt   (eda/task-worktree marker))
+         (ws   (eda/task-workspace marker))
+         (role (or (eda/task-role marker) 'architect))
+         (sid  (eda/task-ensure-session-id marker))
+         (entries (and (boundp 'eda/ws-claudes) (gethash ws eda/ws-claudes)))
+         (buf  (cdr (assq role entries))))
+    (unless (eda/task-role marker)
+      (eda/task-set-prop marker "CLAUDE_ROLE" (symbol-name role)))
+    (cond
+     ((buffer-live-p buf)
+      (when (and (featurep 'persp-mode) (fboundp 'persp-switch)) (persp-switch ws))
+      (pop-to-buffer buf)
+      (message "Task %s already running (%s)" ws role))
+     ((not (file-directory-p wt))
+      (user-error "Worktree %s does not exist yet — create it, then start" wt))
+     (t
+      (eda/task--write-context marker wt)
+      (eda/task--ensure-claude-import wt)
+      (eda/task--log-session marker role sid)
+      (when (and (featurep 'persp-mode) (fboundp 'persp-switch)) (persp-switch ws))
+      (eda/ws-claude--start ws role sid)
+      (message "%s Claude (%s) for %s"
+               (if (eda/task-session-id marker) "Resumed/started" "Started") role ws)))))
+
+;; --- Triggers --------------------------------------------------------------
+
+(defun eda/task--on-state-change ()
+  "Auto-start a session when an EDA entry enters an active state."
+  (when (and eda/task-autostart-on-state-change
+             (boundp 'org-state) org-state
+             (member org-state eda/task-active-states)
+             (eda/task--eda-entry-p))
+    (condition-case err
+        (eda/task-start (point-marker))
+      (error (message "eda/task-start (state-change): %s"
+                      (error-message-string err))))))
+
+(defun eda/task--on-clock-in ()
+  "Auto-start a session when clocking into an EDA task."
+  (when (and eda/task-autostart-on-clock-in
+             (markerp org-clock-hd-marker))
+    (condition-case err
+        (when (org-with-point-at org-clock-hd-marker (eda/task--eda-entry-p))
+          (eda/task-start org-clock-hd-marker))
+      (error (message "eda/task-start (clock-in): %s"
+                      (error-message-string err))))))
+
+(add-hook 'org-after-todo-state-change-hook #'eda/task--on-state-change)
+(add-hook 'org-clock-in-hook #'eda/task--on-clock-in)
+
 ;; --- Keybindings under SPC k o * (org task engine) -------------------------
 ;; NOTE: SPC k t is already `claude-code-toggle', so the task engine lives
 ;; under SPC k o to avoid clobbering it.
 
 (map! :leader
       (:prefix-map ("k o" . "org task engine")
-       :desc "Jump to task's Claude" "j" #'eda/task-jump
-       :desc "Init / stamp schema"   "i" #'eda/task-init
-       :desc "Copy resume command"   "y" #'eda/task-copy-resume
-       :desc "Describe machine"      "?" #'eda/portable-describe))
+       :desc "Start / resume session" "s" #'eda/task-start
+       :desc "Jump to task's Claude"  "j" #'eda/task-jump
+       :desc "Init / stamp schema"    "i" #'eda/task-init
+       :desc "Copy resume command"    "y" #'eda/task-copy-resume
+       :desc "Describe machine"       "?" #'eda/portable-describe))
 
 (provide 'eda-task-engine)
 ;;; eda-task-engine.el ends here
