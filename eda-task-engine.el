@@ -41,6 +41,10 @@
 (defvar eda/ws-claudes)
 (declare-function eda/ws-claude--start "eda-workspace-claude")
 (declare-function eda/ws-claude--uuid "eda-workspace-claude")
+(declare-function eda/ws-claude--snapshot-one "eda-workspace-claude")
+(declare-function claude-code-kill "claude-code")
+(defvar eda/ws-claude-sids)
+(defvar claude-code-confirm-kill)
 
 ;; Phase 9 — session-binding config.
 (defvar eda/task-active-states '("IN-PROGRESS" "REVIEW")
@@ -117,18 +121,18 @@ then :TASK_SLUG: under the root, then the directory of the org file itself."
 
 ;; --- LOGBOOK note writing --------------------------------------------------
 
-(defun eda/task--append-logbook (text)
-  "Prepend a timestamped note TEXT into the LOGBOOK of the entry at point.
-Creates the drawer (after any PROPERTIES drawer / planning line) if absent."
+(defun eda/task--logbook-prepend (line)
+  "Insert LINE (no trailing newline) at the top of the entry's LOGBOOK drawer.
+Creates the drawer after any planning line + PROPERTIES drawer if absent.
+Point must be within the entry (call inside `org-with-point-at')."
   (save-excursion
     (org-back-to-heading t)
     (let* ((hbeg (point))
            (hend (save-excursion (outline-next-heading) (point)))
-           (note (format "- %s %s\n"
-                         (format-time-string "[%Y-%m-%d %a %H:%M]") text)))
+           (text (concat line "\n")))
       (goto-char hbeg)
       (if (re-search-forward "^[ \t]*:LOGBOOK:[ \t]*$" hend t)
-          (progn (forward-line 1) (beginning-of-line) (insert note))
+          (progn (forward-line 1) (beginning-of-line) (insert text))
         ;; No drawer yet — build one after heading + planning + properties.
         (goto-char hbeg)
         (forward-line 1)
@@ -140,7 +144,12 @@ Creates the drawer (after any PROPERTIES drawer / planning line) if absent."
           (when (re-search-forward "^[ \t]*:END:[ \t]*$" hend t)
             (forward-line 1)))
         (beginning-of-line)
-        (insert ":LOGBOOK:\n" note ":END:\n")))))
+        (insert ":LOGBOOK:\n" text ":END:\n")))))
+
+(defun eda/task--append-logbook (text)
+  "Prepend a timestamped note TEXT into the LOGBOOK of the entry at point."
+  (eda/task--logbook-prepend
+   (format "- %s %s" (format-time-string "[%Y-%m-%d %a %H:%M]") text)))
 
 (defun eda/task-resume-command (marker)
   "Return a copy-pasteable shell command to resume the task's Claude session."
@@ -355,6 +364,23 @@ session by its stored id (or starts fresh)."
       (eda/ws-claude--start ws role sid)
       (message "%s Claude (%s) for %s"
                (if (eda/task-session-id marker) "Resumed/started" "Started") role ws)))))
+
+;;;###autoload
+(defun eda/task-stop-session (ws role)
+  "Snapshot and kill the Claude session for (WS, ROLE) if it is live.
+Returns non-nil if a live session was killed. Used by clock-out (MF1)."
+  (let* ((entries (and (boundp 'eda/ws-claudes) (gethash ws eda/ws-claudes)))
+         (buf (cdr (assq role entries))))
+    (when (buffer-live-p buf)
+      (ignore-errors (eda/ws-claude--snapshot-one ws role buf))
+      (with-current-buffer buf
+        (let ((claude-code-confirm-kill nil))
+          (ignore-errors (claude-code-kill))))
+      (puthash ws (cl-remove-if (lambda (e) (eq (car e) role)) entries)
+               eda/ws-claudes)
+      (when (boundp 'eda/ws-claude-sids)
+        (remhash (cons ws role) eda/ws-claude-sids))
+      t)))
 
 ;; --- Triggers --------------------------------------------------------------
 

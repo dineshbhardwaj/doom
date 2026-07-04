@@ -611,6 +611,11 @@
 (load! "eda-task-engine")
 
 ;; ════════════════════════════════════════════════════════════════════
+;; EDA — Parallel-clock engine + idle task (phase 10, layer 3)
+;; ════════════════════════════════════════════════════════════════════
+(load! "eda-pclock")
+
+;; ════════════════════════════════════════════════════════════════════
 ;; Terminal (emacs -nw) clipboard — macOS / Terminal.app
 ;; ════════════════════════════════════════════════════════════════════
 ;; Terminal.app does NOT speak OSC 52, so clipetty / (tty +osc) do nothing.
