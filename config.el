@@ -621,6 +621,11 @@
 (load! "eda-grid")
 
 ;; ════════════════════════════════════════════════════════════════════
+;; EDA — DONE-gate: delivery ritual (phase 12, layer 6)
+;; ════════════════════════════════════════════════════════════════════
+(load! "eda-done-gate")
+
+;; ════════════════════════════════════════════════════════════════════
 ;; Terminal (emacs -nw) clipboard — macOS / Terminal.app
 ;; ════════════════════════════════════════════════════════════════════
 ;; Terminal.app does NOT speak OSC 52, so clipetty / (tty +osc) do nothing.
