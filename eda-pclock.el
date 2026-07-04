@@ -40,6 +40,10 @@
 (defvar eda/pclock-kill-session-on-out t
   "When non-nil, clocking a task out kills its Claude session (MF1).")
 
+(defvar eda/pclock-changed-hook nil
+  "Run after any clock in/out. The window-grid (phase 11) uses this to
+auto-relayout when the number of active clocks changes.")
+
 (defvar eda/pclock-state-file
   (expand-file-name "eda-pclock-state.el"
                     (or (bound-and-true-p doom-cache-dir) temporary-file-directory))
@@ -141,6 +145,7 @@ No-op (with a message) if that entry is already clocked in."
                eda/pclock-active)
       (eda/pclock--save)
       (eda/pclock--update-modeline)
+      (run-hooks 'eda/pclock-changed-hook)
       (message "Clocked IN (%d active): %s"
                (eda/pclock--count)
                (org-with-point-at marker (org-get-heading t t t t))))))
@@ -176,6 +181,7 @@ No-op (with a message) if that entry is already clocked in."
           (eda/task-stop-session (plist-get pl :ws) (plist-get pl :role))))
       (eda/pclock--save)
       (eda/pclock--update-modeline)
+      (run-hooks 'eda/pclock-changed-hook)
       (message "Clocked OUT (%d active): %s"
                (eda/pclock--count) (plist-get pl :title)))))
 

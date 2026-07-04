@@ -616,6 +616,11 @@
 (load! "eda-pclock")
 
 ;; ════════════════════════════════════════════════════════════════════
+;; EDA — Window grid + buffer ergonomics (phase 11, layer 5)
+;; ════════════════════════════════════════════════════════════════════
+(load! "eda-grid")
+
+;; ════════════════════════════════════════════════════════════════════
 ;; Terminal (emacs -nw) clipboard — macOS / Terminal.app
 ;; ════════════════════════════════════════════════════════════════════
 ;; Terminal.app does NOT speak OSC 52, so clipetty / (tty +osc) do nothing.

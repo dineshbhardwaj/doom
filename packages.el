@@ -86,3 +86,9 @@
 (package! ws-butler)                 ; trim trailing whitespace on save (RTL hygiene)
 (package! envrc)                     ; explicit pin even though :tools direnv pulls it
 (package! consult-yasnippet)         ; vertico-friendly snippet picker
+
+;; ─────────────────────────────────────────────────────────────────
+;; EDA IDE additions (phase 11) — window grid / fast switching
+;; ─────────────────────────────────────────────────────────────────
+(package! winum)                     ; numbered window jump (s-1..s-9)
+(package! ace-window)                ; letter-overlay window jump (M-o)
