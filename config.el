@@ -47,7 +47,27 @@
 ;; If you use `org' and don't want your org files in the default location below,
 ;; change `org-directory'. It must be set before org loads!
 (setq org-directory "~/Dropbox/organist-dinesh/")                               
-(setq org-roam-directory "~/Dropbox/org-roam/")  
+(setq org-roam-directory "~/Dropbox/org-roam/")
+
+;; Index additional project-local knowledge bases beyond `org-roam-directory'.
+;; org-roam natively scans only one root, so we advise its file lister to also
+;; pull .org files from these extra dirs. Add more paths to the list as needed.
+(defvar my/org-roam-extra-dirs '("~/eda/wt/feeds/kb/")
+  "Extra directories org-roam should index in addition to `org-roam-directory'.")
+
+(defun my/org-roam-list-files-extra (orig-fn &rest args)
+  "Append .org files from `my/org-roam-extra-dirs' to org-roam's file list."
+  (append (apply orig-fn args)
+          (cl-loop for dir in my/org-roam-extra-dirs
+                   for full = (expand-file-name dir)
+                   when (file-directory-p full)
+                   append (directory-files-recursively
+                           full
+                           (concat "\\.\\(?:" (mapconcat #'regexp-quote
+                                                         org-roam-file-extensions "\\|")
+                                   "\\)\\'")))))
+
+(advice-add 'org-roam-list-files :around #'my/org-roam-list-files-extra)
 
 ;; Whenever you reconfigure a package, make sure to wrap your config in an
 ;; `after!' block, otherwise Doom's defaults may override your settings. E.g.
@@ -549,6 +569,13 @@
   (define-key eat-char-mode-map      (kbd "C-S-v") #'eat-yank))
 
 ;; ════════════════════════════════════════════════════════════════════
+;; EDA — Portability / host profile / tool discovery (phase 8, layer 0)
+;; Loaded FIRST so its path roots become the canonical values the later
+;; eda-* modules inherit. Pure refactor on the Mac (defaults unchanged).
+;; ════════════════════════════════════════════════════════════════════
+(load! "eda-portable")
+
+;; ════════════════════════════════════════════════════════════════════
 ;; EDA — SystemVerilog stack (phase 2)
 ;; ════════════════════════════════════════════════════════════════════
 (load! "eda-sv")
@@ -577,6 +604,11 @@
 ;; EDA — Per-workspace role-specialised Claude sessions (phase 7)
 ;; ════════════════════════════════════════════════════════════════════
 (load! "eda-workspace-claude")
+
+;; ════════════════════════════════════════════════════════════════════
+;; EDA — Org task engine: schema + task-jump (phase 8, layers 1–2)
+;; ════════════════════════════════════════════════════════════════════
+(load! "eda-task-engine")
 
 ;; ════════════════════════════════════════════════════════════════════
 ;; Terminal (emacs -nw) clipboard — macOS / Terminal.app
