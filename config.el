@@ -636,6 +636,11 @@
 (load! "eda-sync")
 
 ;; ════════════════════════════════════════════════════════════════════
+;; EDA — Reporting: per-tag/client + idle net-math (phase 15, layer 9)
+;; ════════════════════════════════════════════════════════════════════
+(load! "eda-report")
+
+;; ════════════════════════════════════════════════════════════════════
 ;; Terminal (emacs -nw) clipboard — macOS / Terminal.app
 ;; ════════════════════════════════════════════════════════════════════
 ;; Terminal.app does NOT speak OSC 52, so clipetty / (tty +osc) do nothing.
