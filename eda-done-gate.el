@@ -67,7 +67,10 @@
   "TODO states whose entry triggers the DONE-gate ritual.")
 
 (defvar eda/done-gate-reset-state "REVIEW"
-  "TODO state a task is reset to when the gate vetoes the DONE transition.")
+  "TODO state a task is reset to when the gate vetoes the DONE transition.
+REVIEW is registered by `eda/task--register-review-keyword' and is an active
+state (`eda/task-active-states'), so a vetoed DONE returns the task to REVIEW
+with its Claude session still live/resumable for the rework.")
 
 (defvar eda/done-gate-run-self-review t
   "When non-nil, run the headless `claude' self-review (check 3).")

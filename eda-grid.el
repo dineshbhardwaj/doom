@@ -2,13 +2,13 @@
 ;;;
 ;;; Phase 11 · Layer 5 — window grid + buffer ergonomics (E5/E13/E14/E15/E16).
 ;;;
-;;; The default working layout: slot 0 = the org (weekly) agenda; slots 1..n =
-;;; one Claude pane per CLOCKED task, in clock order. The grid shape is chosen
-;;; by how many tasks are clocked and re-rendered automatically on every clock
-;;; in/out (via `eda/pclock-changed-hook'):
+;;; The default working layout is fixed at the front: slot 0 = the org (weekly)
+;;; agenda, slot 1 = elfeed; slots 2..n = one Claude pane per CLOCKED task, in
+;;; clock order. The grid shape is chosen by how many tasks are clocked and
+;;; re-rendered automatically on every clock in/out (via `eda/pclock-changed-hook'):
 ;;;
-;;;   0 clocked → agenda only        1 → 1×2      2–3 → 2×2
-;;;   4–5 → 2×3                       6–7 → 2×4  (caps at 8 windows)
+;;;   0 clocked → agenda+elfeed (1×2)   1–2 → 2×2
+;;;   3–4 → 2×3                          5+  → 2×4  (caps at 8 windows)
 ;;;
 ;;;   C-x 1  zoom the current pane (suspends auto-relayout)
 ;;;   C-x 0  restore the grid        M-o  jump to a window (ace-window)
@@ -29,14 +29,14 @@
 
 (defun eda/grid-layout-for-count (n)
   "Return plist (:windows W :rows R :cols C :shown S) for N clocked tasks.
-Window 0 holds the agenda; the remaining W-1 hold Claude sessions. Caps at 8
-windows; SHOWN is how many task panes are available (never silently more)."
+Window 0 holds the agenda and window 1 holds elfeed; the remaining W-2 hold
+Claude sessions. Caps at 8 windows; SHOWN is how many Claude panes are
+available (= W-2), never silently more."
   (cond
-   ((<= n 0) (list :windows 1 :rows 1 :cols 1 :shown 0))
-   ((=  n 1) (list :windows 2 :rows 1 :cols 2 :shown 1))
-   ((<= n 3) (list :windows 4 :rows 2 :cols 2 :shown 3))
-   ((<= n 5) (list :windows 6 :rows 2 :cols 3 :shown 5))
-   (t        (list :windows 8 :rows 2 :cols 4 :shown 7))))
+   ((<= n 0) (list :windows 2 :rows 1 :cols 2 :shown 0))
+   ((<= n 2) (list :windows 4 :rows 2 :cols 2 :shown 2))
+   ((<= n 4) (list :windows 6 :rows 2 :cols 3 :shown 4))
+   (t        (list :windows 8 :rows 2 :cols 4 :shown 6))))
 
 ;; --- Window builder --------------------------------------------------------
 
@@ -90,6 +90,16 @@ windows; SHOWN is how many task panes are available (never silently more)."
         (get-buffer "*Org Agenda*"))
       (get-buffer-create "*scratch*")))
 
+(defun eda/grid--elfeed-buffer ()
+  "Return the elfeed search buffer for slot 1 (best-effort, no focus steal).
+Falls back to *scratch* if elfeed is unavailable so the grid never breaks."
+  (or (get-buffer "*elfeed-search*")
+      (and (or (featurep 'elfeed) (require 'elfeed nil t) (fboundp 'elfeed))
+           (save-window-excursion
+             (ignore-errors (elfeed))
+             (get-buffer "*elfeed-search*")))
+      (get-buffer-create "*scratch*")))
+
 ;; --- Refresh / restore / zoom ----------------------------------------------
 
 (defvar eda/grid-auto-refresh t
@@ -109,17 +119,21 @@ windows; SHOWN is how many task panes are available (never silently more)."
     (condition-case err
         (let ((wins (eda/grid--build (plist-get spec :rows)
                                      (plist-get spec :cols))))
+          ;; Fixed front slots: 0 = agenda, 1 = elfeed.
           (set-window-buffer (nth 0 wins) (eda/grid--agenda-buffer))
+          (when (nth 1 wins)
+            (set-window-buffer (nth 1 wins) (eda/grid--elfeed-buffer)))
+          ;; Claude panes start at slot 2, in clock order.
           (cl-loop for i from 0 below (min shown n)
                    for id in order
-                   for w = (nth (1+ i) wins)
+                   for w = (nth (+ 2 i) wins)
                    when w do
                    (let ((buf (eda/grid--task-buffer id)))
                      (when buf
                        (set-window-buffer w buf)
                        (set-window-dedicated-p w t))))
           ;; leftover panes → scratch (so an off-breakpoint count looks clean)
-          (cl-loop for i from (1+ (min shown n)) below (length wins)
+          (cl-loop for i from (+ 2 (min shown n)) below (length wins)
                    for w = (nth i wins)
                    when w do (set-window-buffer w (get-buffer-create "*scratch*")))
           (when (> n shown)

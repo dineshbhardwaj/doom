@@ -47,8 +47,14 @@
 (defvar claude-code-confirm-kill)
 
 ;; Phase 9 — session-binding config.
-(defvar eda/task-active-states '("IN-PROGRESS" "REVIEW")
-  "TODO states that auto-start/resume an entry's Claude session (E4).")
+(defvar eda/task-active-states '("STRT" "REVIEW")
+  "TODO states that auto-start/resume an entry's Claude session (E4).
+Must match the keywords actually registered in `org-todo-keywords'. This
+config uses Doom's stock sequence TODO/PROJ/LOOP/STRT/WAIT/HOLD/IDEA | DONE/KILL
+with a REVIEW(v) keyword added (see `eda/task--register-review-keyword'). STRT
+is \"work in progress\"; REVIEW is \"work done, awaiting the DONE-gate review\".
+Both keep the session live so `eda/task-jump' lands on a running Claude — that
+is what makes the review actually reviewable.")
 (defvar eda/task-autostart-on-state-change t
   "When non-nil, entering an `eda/task-active-states' state starts the session.")
 (defvar eda/task-autostart-on-clock-in t
@@ -56,9 +62,39 @@
 
 ;; --- Org clock/log storage: keep notes and clocks in a LOGBOOK drawer ------
 
+(defun eda/task--register-review-keyword ()
+  "Add a REVIEW(v) keyword before the `|' in the first org todo sequence.
+Idempotent, and non-destructive: it splices REVIEW into whatever sequence Doom
+(or the user) already established rather than clobbering `org-todo-keywords'.
+REVIEW is the resting state between STRT and DONE — the DONE-gate resets vetoed
+tasks here, and the session stays live so the work can be reviewed and finished."
+  (let ((seqs org-todo-keywords))
+    (unless (cl-some (lambda (s)
+                       (and (consp s)
+                            (cl-some (lambda (k)
+                                       (member (car (split-string k "(")) '("REVIEW")))
+                                     (cdr s))))
+                     seqs)
+      (let ((first (car seqs)))
+        (when (and (consp first) (eq (car first) 'sequence))
+          (let* ((kws (cdr first))
+                 (pos (cl-position "|" kws :test #'equal))
+                 (new (if pos
+                          (append (cl-subseq kws 0 pos)
+                                  (list "REVIEW(v)")
+                                  (cl-subseq kws pos))
+                        (append kws (list "REVIEW(v)")))))
+            (setcdr first new)
+            (setq org-todo-keywords seqs))))))
+  ;; Give REVIEW a distinct look (idempotent).
+  (unless (assoc "REVIEW" org-todo-keyword-faces)
+    (push '("REVIEW" . +org-todo-active) org-todo-keyword-faces)))
+
 (with-eval-after-load 'org
   (setq org-log-into-drawer t)          ; state-change notes → :LOGBOOK:
-  (setq org-clock-into-drawer "LOGBOOK")) ; CLOCK: lines → :LOGBOOK: too
+  (setq org-clock-into-drawer "LOGBOOK") ; CLOCK: lines → :LOGBOOK: too
+  ;; Register the REVIEW stage LAST so it wins over Doom's stock sequence.
+  (eda/task--register-review-keyword))
 
 ;; --- Locate the org entry at point (agenda-aware) --------------------------
 
