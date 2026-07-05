@@ -92,3 +92,14 @@
 ;; ─────────────────────────────────────────────────────────────────
 (package! winum)                     ; numbered window jump (s-1..s-9)
 (package! ace-window)                ; letter-overlay window jump (M-o)
+
+;; ─────────────────────────────────────────────────────────────────
+;; EDA IDE — phase 17 (OPTIONAL, E12): MCP power-up
+;; ─────────────────────────────────────────────────────────────────
+;; Exposes Emacs diagnostics / xref / ediff to Claude via an MCP server, handy
+;; for the DONE-gate review step. Early-development / MCP-reachability bugs per
+;; research → OFF by default and NEVER load-bearing (see eda-mcp.el).
+;; To try it: uncomment, `doom sync', restart, then M-x eda/mcp-enable
+;; (or set eda/mcp-enabled t in .eda-local.el). Verify the repo before enabling.
+;; (package! claude-code-ide
+;;   :recipe (:host github :repo "manzaltu/claude-code-ide.el"))

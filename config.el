@@ -641,6 +641,11 @@
 (load! "eda-report")
 
 ;; ════════════════════════════════════════════════════════════════════
+;; EDA — MCP bridge (phase 17, OPTIONAL E12; off + non-load-bearing)
+;; ════════════════════════════════════════════════════════════════════
+(load! "eda-mcp")
+
+;; ════════════════════════════════════════════════════════════════════
 ;; Terminal (emacs -nw) clipboard — macOS / Terminal.app
 ;; ════════════════════════════════════════════════════════════════════
 ;; Terminal.app does NOT speak OSC 52, so clipetty / (tty +osc) do nothing.
