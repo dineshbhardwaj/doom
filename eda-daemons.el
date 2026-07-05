@@ -113,8 +113,16 @@ appears in the command line). Excludes the default unnamed `server' socket."
 (defun eda/spawn-daemon (name root)
   "Spawn `emacs --bg-daemon=NAME` with default-directory ROOT."
   (eda/--validate-name name)
+  ;; Phase 16 (E11): the restricted client runs a SINGLE Emacs — no fleet.
+  (when (and (fboundp 'eda/portable-daemon-stack-enabled-p)
+             (not (eda/portable-daemon-stack-enabled-p)))
+    (user-error
+     "Daemon fleet disabled on profile `%s' (single Emacs only); set `eda/portable-allow-daemon-fleet' to override"
+     (bound-and-true-p eda/portable-profile)))
   (when (eda/daemon-running-p name)
     (user-error "Daemon %s is already running" name))
+  (unless (executable-find "emacs")
+    (user-error "No `emacs' on PATH to spawn a daemon here"))
   (let ((default-directory (file-name-as-directory root)))
     (start-process (format "eda-spawn-%s" name) nil
                    (executable-find "emacs")

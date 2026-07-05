@@ -9,6 +9,9 @@
 # EDA daemon registry (machine-local — contains absolute home paths)
 eda-registry.el
 
+# EDA per-machine overrides (secrets/paths/profile/sync emails; E11)
+.eda-local.el
+
 # Compiled elc
 *.elc
 
