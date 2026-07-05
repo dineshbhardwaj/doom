@@ -359,6 +359,11 @@ session by its stored id (or starts fresh)."
      (t
       (eda/task--write-context marker wt)
       (eda/task--ensure-claude-import wt)
+      ;; E8: make the worktree CLAUDE.md @-import the memory store(s) allowed
+      ;; on this machine, so the resuming Claude reads collective memory too.
+      (when (fboundp 'eda/mem-ensure-imports)
+        (ignore-errors
+          (eda/mem-ensure-imports wt (eda/task-prop marker "MEM_SCOPE" t))))
       (eda/task--log-session marker role sid)
       (when (and (featurep 'persp-mode) (fboundp 'persp-switch)) (persp-switch ws))
       (eda/ws-claude--start ws role sid)

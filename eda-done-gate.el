@@ -53,7 +53,13 @@
 (declare-function eda/task--append-logbook "eda-task-engine")
 (declare-function eda/ws-claude--snapshot-one "eda-workspace-claude")
 (declare-function eda/pclock-out "eda-pclock")
-(defvar eda/portable-memory-root)
+;; Memory store (E8 / eda-memory.el) — the canonical owner of :MEM_SCOPE:.
+(declare-function eda/mem-normalize-scope "eda-memory")
+(declare-function eda/mem-entry-file "eda-memory")
+(declare-function eda/mem-entry-nontrivial-p "eda-memory")
+(declare-function eda/mem-entry-stub "eda-memory")
+(declare-function eda/mem-index-add "eda-memory")
+(declare-function eda/mem-distill-for-task "eda-memory")
 
 ;; --- Config ----------------------------------------------------------------
 
@@ -255,68 +261,34 @@ Idempotent: a prior `Review ▶' entry satisfies the check without re-asking."
                   (cons t "reviewed")
                 (cons nil "self-review not accepted — address findings, then re-run")))))))))))
 
-;; --- Check 4: memory entry present -----------------------------------------
-
-(defun eda/done-gate--memory-dir (scope)
-  "Resolve the memory store directory for SCOPE (personal | client-<x>)."
-  (cond
-   ((or (null scope) (string-empty-p scope) (string= scope "personal"))
-    (eda/portable-personal-memory-dir))
-   ((string-prefix-p "client-" scope)
-    (file-name-as-directory
-     (expand-file-name (format "clients/%s" (substring scope (length "client-")))
-                       eda/portable-memory-root)))
-   (t (eda/portable-personal-memory-dir))))
-
-(defun eda/done-gate--memory-satisfied-p (file)
-  "Non-nil when memory FILE exists and carries a non-trivial body."
-  (and (file-readable-p file)
-       (let ((body (with-temp-buffer
-                     (insert-file-contents file)
-                     (goto-char (point-min))
-                     ;; Skip a leading YAML frontmatter block if present.
-                     (when (looking-at-p "^---[ \t]*$")
-                       (forward-line 1)
-                       (when (re-search-forward "^---[ \t]*$" nil t) (forward-line 1)))
-                     (buffer-substring-no-properties (point) (point-max)))))
-         ;; Ignore HTML-comment scaffolding and whitespace when measuring.
-         (>= (length (string-trim
-                      (replace-regexp-in-string "<!--\\(.\\|\n\\)*?-->" "" body)))
-             15))))
-
-(defun eda/done-gate--memory-stub (file title slug scope)
-  "Create memory FILE as a fill-in stub keyed by SLUG. Return FILE."
-  (make-directory (file-name-directory file) t)
-  (with-temp-file file
-    (insert "---\n")
-    (insert (format "name: %s\n" slug))
-    (insert (format "description: %s — lesson from this task\n" title))
-    (insert "metadata:\n  type: project\n")
-    (insert (format "  scope: %s\n" (or scope "personal")))
-    (insert "---\n\n")
-    (insert "<!-- DONE-gate: write the durable lesson from this task before closing.\n")
-    (insert "     What was non-obvious? What should future-you (or Claude) know next time?\n")
-    (insert "     Replace this comment with the lesson, save, then re-mark the task DONE. -->\n"))
-  file)
+;; --- Check 4: memory entry present (delegates to the E8 store) -------------
 
 (defvar eda/done-gate--open-after nil
   "Path to open (find-file) after the gate resolves, e.g. a memory stub.")
 
 (defun eda/done-gate--check-memory (marker)
-  "Require a memory entry keyed by :TASK_SLUG: in the :MEM_SCOPE: store.
-Return (OK . DETAIL); on miss, queue a stub to open and fail the check."
-  (let* ((scope (or (eda/task-prop marker "MEM_SCOPE" t) "personal"))
+  "Require a memory entry keyed by :TASK_SLUG: in the :MEM_SCOPE: store (E8).
+When satisfied, register it in the store INDEX and pass. On a miss, offer to
+distill the lesson with Claude (else drop a stub), queue the entry to open,
+and fail — so the memory is always reviewed by a human before DONE."
+  (let* ((scope (eda/mem-normalize-scope (eda/task-prop marker "MEM_SCOPE" t)))
          (slug  (or (eda/task-prop marker "TASK_SLUG" t)
                     (user-error "Task has no :TASK_SLUG: — run `eda/task-init' first")))
          (title (org-with-point-at marker (org-get-heading t t t t)))
-         (dir   (eda/done-gate--memory-dir scope))
-         (file  (expand-file-name (concat slug ".md") dir)))
-    (if (eda/done-gate--memory-satisfied-p file)
-        (cons t (format "present (%s)" (abbreviate-file-name file)))
-      (unless (file-exists-p file)
-        (eda/done-gate--memory-stub file title slug scope))
+         (file  (eda/mem-entry-file scope slug)))
+    (if (eda/mem-entry-nontrivial-p file)
+        (progn
+          (eda/mem-index-add scope slug title)
+          (cons t (format "present (%s)" (abbreviate-file-name file))))
+      (if (and (eda/portable-claude-available-p)
+               (y-or-n-p "No memory entry yet — draft the lesson with Claude now? "))
+          (progn
+            (message "DONE-gate: distilling the task's lesson…")
+            (eda/mem-distill-for-task marker nil))
+        (unless (file-exists-p file)
+          (eda/mem-entry-stub scope slug title)))
       (setq eda/done-gate--open-after file)
-      (cons nil (format "write the task's memory entry: %s"
+      (cons nil (format "review/complete the memory entry: %s"
                         (abbreviate-file-name file))))))
 
 ;; --- The gate + finalizer ---------------------------------------------------
