@@ -12,6 +12,10 @@ eda-registry.el
 # EDA per-machine overrides (secrets/paths/profile/sync emails; E11)
 .eda-local.el
 
+# Per-worktree org task file (this dir is the `doom' worktree). Machine-local;
+# may hold personal/client task content that must NOT enter the config repo.
+project.org
+
 # Compiled elc
 *.elc
 
