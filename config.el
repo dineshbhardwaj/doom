@@ -371,13 +371,44 @@
         ;; (default 0.1 s leaves cursor / selection visibly lagging).
         vterm-timer-delay 0.02)
 
-  ;; ESC must reach the TUI inside vterm (Claude Code /btw exit, popup
-  ;; cancel, etc.). Without this, evil swallows the first ESC to switch
-  ;; to normal state and the child process never sees it.
+  ;; --- C-\ : toggle a scroll / copy mode over the terminal ----------------
+  ;; From live interaction, C-\ enters `vterm-copy-mode' in evil NORMAL state
+  ;; so the scrollback becomes a normal editable-feeling buffer: scroll with
+  ;; C-u/C-d/j/k, `v' to visually select, `y' to copy to the kill-ring, `p'
+  ;; to paste the kill-ring straight into the terminal (which drops you back
+  ;; into interaction). C-\ again — with nothing to paste — also returns to
+  ;; live Claude interaction. C-\ is the ONLY deliberate way out of the
+  ;; terminal, which is what lets ESC stay reserved for Claude (below).
+  (defun +eda/vterm-toggle-copy-mode ()
+    "Toggle vterm scroll/copy mode; return to live interaction when leaving."
+    (interactive)
+    (if (bound-and-true-p vterm-copy-mode)
+        (progn (vterm-copy-mode -1)
+               (when (fboundp 'evil-emacs-state) (evil-emacs-state)))
+      (vterm-copy-mode 1)
+      (when (fboundp 'evil-normal-state) (evil-normal-state))))
+
+  (defun +eda/vterm-copy-mode-paste ()
+    "Leave scroll/copy mode and paste the kill-ring into the terminal."
+    (interactive)
+    (when (bound-and-true-p vterm-copy-mode) (vterm-copy-mode -1))
+    (when (fboundp 'evil-emacs-state) (evil-emacs-state))
+    (vterm-yank))
+
+  ;; ESC must reach the TUI inside vterm (Claude Code interrupt, popup
+  ;; cancel, /clear, etc.). Without this, evil swallows the first ESC to
+  ;; switch state and the child process never sees it. C-\ is the toggle in.
   (map! :map vterm-mode-map
         :ie "<escape>" #'vterm-send-escape
-        ;; Explicit way INTO evil normal state for scrollback / yank.
-        :ie "C-\\"     #'evil-normal-state))
+        :ie "C-\\"     #'+eda/vterm-toggle-copy-mode)
+
+  ;; Inside scroll/copy mode: C-\ (any state) returns to interaction; `p'
+  ;; pastes into the terminal; `v'/`y' are evil's own visual-select + yank.
+  (map! :map vterm-copy-mode-map
+        "C-\\"    #'+eda/vterm-toggle-copy-mode
+        :n "C-\\" #'+eda/vterm-toggle-copy-mode
+        :v "C-\\" #'+eda/vterm-toggle-copy-mode
+        :n "p"    #'+eda/vterm-copy-mode-paste))
 
 ;; Belt-and-suspenders: ensure new vterm buffers start in evil emacs
 ;; state (no key interception) regardless of what claude-code or other
