@@ -631,6 +631,11 @@
 (load! "eda-done-gate")
 
 ;; ════════════════════════════════════════════════════════════════════
+;; EDA — Sync spine: client email bridge + mobile (phase 14, layer 7)
+;; ════════════════════════════════════════════════════════════════════
+(load! "eda-sync")
+
+;; ════════════════════════════════════════════════════════════════════
 ;; Terminal (emacs -nw) clipboard — macOS / Terminal.app
 ;; ════════════════════════════════════════════════════════════════════
 ;; Terminal.app does NOT speak OSC 52, so clipetty / (tty +osc) do nothing.
