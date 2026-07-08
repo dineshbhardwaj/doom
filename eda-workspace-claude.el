@@ -247,23 +247,52 @@ Only sessions whose transcript still exists on disk are included."
 (declare-function claude-code-kill "claude-code")
 (declare-function claude-code--buffer-name "claude-code")
 
-(defun eda/ws-claude--spawn (wt role &optional resume-sid)
+(defun eda/ws-claude--session-exists-p (wt sid)
+  "Non-nil if a transcript for SID already exists under WT's Claude project dir.
+This distinguishes a first launch from a resume: `claude --resume' fails when
+the session was never actually created — exactly the case when the id was minted
+at `eda/task-init' but the task had not been started yet. In that case we must
+create the session with `--session-id SID', not try to resume a ghost."
+  (and sid (stringp sid) (not (string-empty-p sid))
+       (file-readable-p
+        (expand-file-name (concat sid ".jsonl")
+                          (eda/ws-claude--project-dir wt)))))
+
+(defun eda/ws-claude--spawn (wt role &optional sid)
   "Spawn a claude-code instance for ROLE under worktree WT.
-Without RESUME-SID a fresh v4 UUID is generated and passed as
-`--session-id' so the id is known up front; with RESUME-SID, attaches
-`--resume <sid>' to rejoin that session in place.  Returns (BUFFER . SID)."
+SID is the deterministic session id to use (a fresh v4 UUID is generated when
+nil). If a transcript for SID already exists on disk we `--resume' it in place;
+otherwise we create it up front with `--session-id SID'. This is the fix for a
+first clock-in silently dying: the id stamped at task-init has no session yet,
+so `--resume' would fail and the vterm would exit. Returns (BUFFER . SID)."
   (let* ((wt-truename (file-truename wt))
          (instance-name (symbol-name role))
-         (sid (or resume-sid (eda/ws-claude--uuid)))
-         (extra-switches (if resume-sid
-                             (list "--resume" resume-sid)
+         (sid (or sid (eda/ws-claude--uuid)))
+         (resume (eda/ws-claude--session-exists-p wt sid))
+         (extra-switches (if resume
+                             (list "--resume" sid)
                            (list "--session-id" sid))))
     ;; Override claude-code's directory + instance-name probes for this call.
     (cl-letf (((symbol-function 'claude-code--directory)
                (lambda () wt-truename))
               ((symbol-function 'claude-code--prompt-for-instance-name)
                (lambda (&rest _) instance-name)))
-      (claude-code--start nil extra-switches t nil))
+      ;; Scrub inherited child/agent markers so the spawned CLI is a proper
+      ;; TOP-LEVEL session.  When Emacs itself is launched from inside a Claude
+      ;; session, these vars leak in and Claude Code treats every spawned
+      ;; instance as a child/agent — which never writes a resumable
+      ;; `<sid>.jsonl' under ~/.claude/projects/. Result: `--resume' always
+      ;; finds nothing and the self-healing spawn falls back to a fresh
+      ;; `--session-id' buffer every time, and clean-exit flush has no
+      ;; transcript to flush. Stripping them restores transcript persistence.
+      (let ((process-environment
+             (seq-remove
+              (lambda (v)
+                (string-match-p
+                 "\\`\\(CLAUDECODE\\|CLAUDE_CODE_CHILD_SESSION\\|CLAUDE_CODE_ENTRYPOINT\\|CLAUDE_CODE_SESSION_ID\\|AI_AGENT\\)="
+                 v))
+              process-environment)))
+        (claude-code--start nil extra-switches t nil)))
     ;; Look up the buffer claude-code just created (named per its convention).
     (let ((buf-name (format "*claude:%s:%s*"
                             (abbreviate-file-name wt-truename)
@@ -308,6 +337,71 @@ seed a role-bootstrap prompt.  Returns the Claude buffer."
       (message "%s Claude (%s) for workspace %s"
                (if resume-sid "Resumed" "Started") role ws)
       buf)))
+
+;; --- Clean shutdown (transcript flush) -------------------------------------
+;;
+;; Claude keeps the live conversation in memory and only flushes `<sid>.jsonl'
+;; when it EXITS.  Force-killing the vterm (SIGHUP/SIGKILL) therefore loses the
+;; tail of the conversation, so the next `--resume' finds a stale or missing
+;; transcript and opens a fresh, empty buffer.  `eda/ws-claude--graceful-exit'
+;; asks Claude to quit (two C-c is its confirm-to-exit; C-d nudges an idle
+;; prompt), then waits — bounded — for the process to die so the flush lands.
+
+(defvar eda/ws-claude-exit-timeout 6
+  "Seconds to wait for a Claude session to exit cleanly (flushing its
+`<sid>.jsonl' transcript) before it is force-killed on clock-out / kill.")
+
+(defun eda/ws-claude--send-ctrl (buf ch)
+  "Send control-CH (CH is a letter char, e.g. ?c) into vterm BUF."
+  (when (buffer-live-p buf)
+    (with-current-buffer buf
+      (let ((raw (string (- (upcase ch) ?@))))  ; ?c → \C-c (\x03), ?d → \x04
+        (cond
+         ((fboundp 'vterm-send-key)
+          (vterm-send-key (char-to-string (downcase ch)) nil nil t))
+         ((fboundp 'vterm-send-string) (vterm-send-string raw))
+         ((fboundp 'term-send-raw-string) (term-send-raw-string raw)))))))
+
+(defun eda/ws-claude--graceful-exit (buf &optional timeout)
+  "Try to make the Claude in BUF exit cleanly so it flushes its transcript.
+Sends the interactive quit sequence (two C-c, then a C-d nudge) — or SIGINT for
+a non-vterm buffer — and waits up to TIMEOUT seconds (default
+`eda/ws-claude-exit-timeout') for the process to terminate. Returns non-nil if
+it exited within the window; nil means the caller should force-kill."
+  (when (buffer-live-p buf)
+    (let* ((proc (get-buffer-process buf))
+           (limit (or timeout eda/ws-claude-exit-timeout))
+           (deadline (+ (float-time) limit)))
+      (if (not (and proc (process-live-p proc)))
+          t                                   ; nothing running → already gone
+        ;; Request quit.
+        (if (with-current-buffer buf (derived-mode-p 'vterm-mode))
+            (progn (eda/ws-claude--send-ctrl buf ?c)
+                   (accept-process-output proc 0.2)
+                   (eda/ws-claude--send-ctrl buf ?c))
+          (ignore-errors (interrupt-process proc)))
+        ;; Wait (bounded) for the process to die; nudge once past halfway.
+        (let ((nudged nil))
+          (while (and (process-live-p proc) (< (float-time) deadline))
+            (accept-process-output proc 0.1)
+            (sleep-for 0.05)
+            (when (and (not nudged) (< (- deadline (float-time)) (/ limit 2.0)))
+              (setq nudged t)
+              (if (with-current-buffer buf (derived-mode-p 'vterm-mode))
+                  (eda/ws-claude--send-ctrl buf ?d)   ; EOF at an empty prompt
+                (ignore-errors (interrupt-process proc)))))
+          (not (process-live-p proc)))))))
+
+(defun eda/ws-claude--stop-buffer (buf)
+  "Cleanly stop the Claude in BUF: graceful exit, else force-kill.
+Returns non-nil if the session exited cleanly (transcript flushed)."
+  (let ((exited (ignore-errors (eda/ws-claude--graceful-exit buf))))
+    (when (buffer-live-p buf)
+      (with-current-buffer buf
+        (let ((claude-code-confirm-kill nil))
+          (ignore-errors (claude-code-kill))))
+      (when (buffer-live-p buf) (ignore-errors (kill-buffer buf))))
+    exited))
 
 ;; --- Public commands -------------------------------------------------------
 
@@ -396,9 +490,8 @@ seeded with the role bootstrap prompt."
            (buf (cdr (assoc role entries))))
       (when (buffer-live-p buf)
         (ignore-errors (eda/ws-claude--snapshot-one ws role buf))
-        (with-current-buffer buf
-          (let ((claude-code-confirm-kill nil))
-            (ignore-errors (claude-code-kill)))))
+        ;; Let Claude flush its transcript before we tear the buffer down.
+        (eda/ws-claude--stop-buffer buf))
       (puthash ws (cl-remove-if (lambda (e) (eq (car e) role)) entries)
                eda/ws-claudes)
       (remhash (cons ws role) eda/ws-claude-sids)
@@ -480,16 +573,68 @@ For each role with recorded history, resumes its newest session in place."
 
 ;; --- Hooks -----------------------------------------------------------------
 
+(defvar eda/ws-claude-shutdown-budget 8
+  "Total seconds budgeted at Emacs shutdown to let ALL live Claude sessions
+exit cleanly (flush their `<sid>.jsonl' transcripts). Sessions are asked to
+quit in parallel and SHARE this budget — unlike `eda/ws-claude-exit-timeout',
+which is per-session on clock-out — so shutdown is never blocked for long no
+matter how many sessions are live.")
+
+(defun eda/ws-claude--live-buffers ()
+  "Return a list of (WS ROLE BUF) for every live workspace Claude buffer."
+  (let (out)
+    (maphash (lambda (ws entries)
+               (dolist (e entries)
+                 (when (buffer-live-p (cdr e))
+                   (push (list ws (car e) (cdr e)) out))))
+             eda/ws-claudes)
+    out))
+
 (defun eda/ws-claude--snapshot-all-on-shutdown ()
-  "Best-effort snapshot of every workspace's Claudes at shutdown.
-Note: the durable session id is already persisted at spawn, so resume
-survives even when this hook does not run (e.g. an OS-forced restart)."
-  (maphash
-   (lambda (ws entries)
-     (dolist (e entries)
-       (ignore-errors
-         (eda/ws-claude--snapshot-one ws (car e) (cdr e)))))
-   eda/ws-claudes))
+  "At Emacs shutdown: snapshot every workspace Claude, then let them all exit
+cleanly IN PARALLEL so their `<sid>.jsonl' transcripts are flushed before the
+processes are reaped.  Bounded by `eda/ws-claude-shutdown-budget' total, so
+shutdown is never blocked for long; any session still alive at the deadline is
+left for the OS to signal (its snapshot `.md' is already written).
+
+Note: the durable session id is persisted at spawn, so resume survives even
+when this hook does not run at all (e.g. an OS-forced restart)."
+  (let ((live (eda/ws-claude--live-buffers)))
+    ;; 1. Snapshot everything first (buffers still hold their text).
+    (dolist (it live)
+      (ignore-errors
+        (eda/ws-claude--snapshot-one (nth 0 it) (nth 1 it) (nth 2 it))))
+    ;; 2. Ask each Claude to quit — fan out, do NOT wait per-session.
+    (dolist (it live)
+      (let ((buf (nth 2 it)))
+        (when (buffer-live-p buf)
+          (ignore-errors
+            (if (with-current-buffer buf (derived-mode-p 'vterm-mode))
+                (progn (eda/ws-claude--send-ctrl buf ?c)
+                       (eda/ws-claude--send-ctrl buf ?c))
+              (let ((p (get-buffer-process buf)))
+                (when (process-live-p p) (interrupt-process p))))))))
+    ;; 3. Wait ONCE, up to the shared budget, for the processes to die.
+    (let ((deadline (+ (float-time) eda/ws-claude-shutdown-budget))
+          (nudged nil))
+      (cl-flet ((any-live ()
+                  (cl-some (lambda (it)
+                             (let ((p (and (buffer-live-p (nth 2 it))
+                                           (get-buffer-process (nth 2 it)))))
+                               (and p (process-live-p p))))
+                           live)))
+        (while (and (< (float-time) deadline) (any-live))
+          (accept-process-output nil 0.1)
+          ;; Past halfway, nudge idle prompts once with C-d (EOF).
+          (when (and (not nudged)
+                     (< (- deadline (float-time))
+                        (/ eda/ws-claude-shutdown-budget 2.0)))
+            (setq nudged t)
+            (dolist (it live)
+              (let ((buf (nth 2 it)))
+                (when (and (buffer-live-p buf)
+                           (with-current-buffer buf (derived-mode-p 'vterm-mode)))
+                  (ignore-errors (eda/ws-claude--send-ctrl buf ?d)))))))))))
 
 (add-hook 'kill-emacs-hook #'eda/ws-claude--snapshot-all-on-shutdown)
 
