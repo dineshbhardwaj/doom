@@ -86,15 +86,78 @@ The set of tasks currently clocked in (may overlap).")
 ;; --- Mode line -------------------------------------------------------------
 
 (defvar eda/pclock-mode-line ""
-  "Mode-line indicator string, e.g. \" ⏱×3\".")
+  "Mode-line indicator string naming the clocked tasks (or the idle task).")
 (put 'eda/pclock-mode-line 'risky-local-variable t)
+
+(defvar eda/pclock-mode-line-words 2
+  "How many leading words of each task title to show in the mode line.")
+
+(defvar eda/pclock-mode-line-max-tasks 4
+  "Max clocked tasks to name in the mode line before collapsing to a `+N' tail.")
 
 (defun eda/pclock--count ()
   (hash-table-count eda/pclock-active))
 
+(defun eda/pclock--short-title (title &optional n)
+  "First N words (default `eda/pclock-mode-line-words') of TITLE."
+  (string-join (seq-take (split-string (or title "") "[ \t]+" t)
+                         (or n eda/pclock-mode-line-words))
+               " "))
+
+(defun eda/pclock--active-sorted (&optional idle)
+  "Active clock plists, oldest clock-in first.  IDLE non-nil → only idle ones,
+nil → only work (non-idle) ones."
+  (let (out)
+    (maphash (lambda (_id pl)
+               (when (eq (and (plist-get pl :idle) t) (and idle t))
+                 (push pl out)))
+             eda/pclock-active)
+    (sort out (lambda (a b) (time-less-p (plist-get a :start)
+                                         (plist-get b :start))))))
+
+(defun eda/pclock--mode-line-string ()
+  "Build the mode-line text from `eda/pclock-active'.
+While an idle clock is active it wins the display (a break is in progress) and
+notes how many work tasks are still held; otherwise the clocked work tasks are
+listed, numbered in clock order, each shown as its first few words."
+  (let ((idles (eda/pclock--active-sorted t))
+        (works (eda/pclock--active-sorted nil)))
+    (cond
+     (idles
+      (concat " ⏸ "
+              (mapconcat (lambda (pl) (plist-get pl :title)) idles " · ")
+              (when works (format " (⏱×%d held)" (length works)))))
+     ((null works) "")
+     (t
+      (let* ((n (length works))
+             (shown (seq-take works eda/pclock-mode-line-max-tasks))
+             (segs (seq-map-indexed
+                    (lambda (pl i)
+                      (format "%d.%s" (1+ i)
+                              (eda/pclock--short-title (plist-get pl :title))))
+                    shown))
+             (tail (- n (length shown))))
+        (concat (format " ⏱×%d " n)
+                (string-join segs " ")
+                (when (> tail 0) (format " +%d" tail))))))))
+
+(defun eda/pclock--mode-line-help ()
+  "Full clocked list, for the mode-line tooltip (help-echo)."
+  (let (lines)
+    (dolist (pl (append (eda/pclock--active-sorted nil)
+                        (eda/pclock--active-sorted t)))
+      (push (format "%s %s"
+                    (if (plist-get pl :idle) "⏸" "⏱")
+                    (plist-get pl :title))
+            lines))
+    (concat "Clocked (" (number-to-string (eda/pclock--count)) "):\n"
+            (string-join (nreverse lines) "\n"))))
+
 (defun eda/pclock--update-modeline ()
-  (let ((n (eda/pclock--count)))
-    (setq eda/pclock-mode-line (if (> n 0) (format " ⏱×%d" n) "")))
+  (setq eda/pclock-mode-line
+        (let ((s (eda/pclock--mode-line-string)))
+          (if (string-empty-p s) ""
+            (propertize s 'help-echo (eda/pclock--mode-line-help)))))
   (unless (memq 'eda/pclock-mode-line global-mode-string)
     (setq global-mode-string
           (append (or global-mode-string '("")) '(eda/pclock-mode-line))))
@@ -248,11 +311,22 @@ running, recording the overlapped idle span (net time is applied at report)."
 
 ;;;###autoload
 (defun eda/task-clock-in ()
-  "Clock IN the task at point: start/resume its Claude AND start its timer."
+  "Clock IN the task at point: start/resume its Claude AND start its timer.
+Rebuilds the default grid so the newly-clocked task gets its own Claude window:
+`eda/task-start' spawns/registers the session, then `eda/pclock-in' fires
+`eda/pclock-changed-hook' → the grid relayout. A prior `C-x 1' zoom leaves the
+grid suspended, which would silently block that relayout, so clear it first."
   (interactive)
   (let ((marker (eda/task--marker)))
     (ignore-errors (eda/task-start marker))
-    (eda/pclock-in marker)))
+    ;; Suppress the changed-hook's relayout during the clock-in so we rebuild
+    ;; exactly once below (no double refresh / flicker), then force one full
+    ;; grid rebuild. `eda/grid-refresh' clears any `C-x 1' zoom-suspend itself,
+    ;; so the newly-clocked task always gets its Claude window — even when the
+    ;; task was already clocked or the grid was zoomed.
+    (let ((eda/grid-auto-refresh nil))
+      (eda/pclock-in marker))
+    (when (fboundp 'eda/grid-refresh) (ignore-errors (eda/grid-refresh)))))
 
 ;;;###autoload
 (defun eda/task-clock-out ()
