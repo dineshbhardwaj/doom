@@ -265,6 +265,13 @@ nil). If a transcript for SID already exists on disk we `--resume' it in place;
 otherwise we create it up front with `--session-id SID'. This is the fix for a
 first clock-in silently dying: the id stamped at task-init has no session yet,
 so `--resume' would fail and the vterm would exit. Returns (BUFFER . SID)."
+  ;; claude-code is deferred (`:after vterm' in config.el), and the private
+  ;; `claude-code--start'/`claude-code--directory' we drive below are NOT
+  ;; autoloaded (private `--' names carry no autoload cookie). On a fresh Emacs
+  ;; (notably the Linux daemon) the library may not be loaded yet when this
+  ;; runs, so the call would hit `void-function claude-code--start'. Force-load
+  ;; it here so the spawn works regardless of load order / platform.
+  (require 'claude-code)
   (let* ((wt-truename (file-truename wt))
          (instance-name (symbol-name role))
          (sid (or sid (eda/ws-claude--uuid)))
