@@ -381,15 +381,49 @@ otherwise a new one is created off the base ref. Returns non-nil on success."
         (user-error "git worktree add failed (exit %s) — see *eda-task-worktree*"
                     code)))))
 
+(defun eda/task--symlink-worktree (wt)
+  "Create worktree WT (absolute) as a symbolic link to a real working tree.
+Prompts for the target directory (e.g. a checkout on scratch) and links
+WT -> TARGET, replacing any stale/self-referential link already at WT.
+Returns non-nil if WT resolves to a directory afterwards."
+  (let* ((target (expand-file-name
+                  (read-directory-name
+                   "Link target (real working tree): "
+                   (or (eda/task--last 'wt-target) eda/portable-worktree-root))))
+         (link   (directory-file-name wt)))
+    (unless (file-directory-p target)
+      (user-error "Link target does not exist: %s" (abbreviate-file-name target)))
+    (make-directory (file-name-directory link) t)
+    ;; Replace any stale/self-referential link already sitting at this path.
+    (when (file-symlink-p link) (delete-file link))
+    (make-symbolic-link (directory-file-name target) link t)
+    (eda/task--hist-add 'wt-target target)
+    (message "Linked %s -> %s"
+             (abbreviate-file-name link) (abbreviate-file-name target))
+    (file-directory-p wt)))
+
+(defun eda/task--worktree-usable-p (wt)
+  "Non-nil if WT is a real directory, or a symlink to some dir other than the
+worktree root itself. A self-referential link (e.g. `vega2a -> ./') resolves to
+the root and is treated as NOT usable, so it can be re-pointed."
+  (let ((link (directory-file-name wt)))
+    (and (file-directory-p wt)
+         (or (not (file-symlink-p link))
+             (not (file-equal-p (file-truename link)
+                                (file-truename eda/portable-worktree-root)))))))
+
 (defun eda/task--create-worktree-at (wt)
   "Create the worktree directory WT (absolute) if it is missing.
-Offers a git worktree or a plain directory; returns non-nil if WT exists after."
-  (if (file-directory-p wt)
+Offers a git worktree, a symbolic link (to a real tree elsewhere, e.g. on
+scratch), or a plain directory; returns non-nil if WT is usable after."
+  (if (eda/task--worktree-usable-p wt)
       (progn (message "Worktree already exists: %s" (abbreviate-file-name wt)) t)
     (pcase (completing-read
             (format "Create %s as: " (abbreviate-file-name wt))
-            '("git worktree" "plain directory") nil t nil nil "git worktree")
-      ("git worktree" (eda/task--git-worktree-add wt))
+            '("git worktree" "symbolic link" "plain directory")
+            nil t nil nil "git worktree")
+      ("git worktree"  (eda/task--git-worktree-add wt))
+      ("symbolic link" (eda/task--symlink-worktree wt))
       (_ (make-directory wt t)
          (message "Created directory %s" (abbreviate-file-name wt))
          (file-directory-p wt)))))
@@ -406,7 +440,7 @@ a git worktree (repo + branch) or a plain directory."
   "If the task at point has a missing worktree, offer to create it now."
   (when eda/task-offer-worktree-create
     (let ((wt (eda/task-worktree (point-marker))))
-      (when (and (not (file-directory-p wt))
+      (when (and (not (eda/task--worktree-usable-p wt))
                  (y-or-n-p (format "Worktree %s doesn't exist — create it now? "
                                    (abbreviate-file-name wt))))
         (eda/task--create-worktree-at wt)))))
