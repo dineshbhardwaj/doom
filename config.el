@@ -423,7 +423,14 @@ that already exists in the file (free text also accepted)."
   (setq vterm-always-compile-module t)
   :config
   (setq vterm-max-scrollback 10000
-        vterm-shell (or (executable-find "zsh") "/bin/bash")
+        ;; Use the box's real login shell rather than hardcoding zsh. The old
+        ;; `(or (executable-find "zsh") "/bin/bash")' launched *any* zsh found
+        ;; on the daemon's exec-path even when it wasn't the login shell — on
+        ;; faraday that picked up a broken/stray zsh that segfaulted on start
+        ;; ("zsh: segmentation fault"). $SHELL is populated by
+        ;; exec-path-from-shell above, so this resolves to zsh on the Mac and
+        ;; bash on faraday, with a hard fallback if $SHELL is somehow unset.
+        vterm-shell (or (getenv "SHELL") (executable-find "bash") "/bin/bash")
         ;; Snappier redraw — helps with Claude Code's interactive prompts
         ;; (default 0.1 s leaves cursor / selection visibly lagging).
         vterm-timer-delay 0.02)
