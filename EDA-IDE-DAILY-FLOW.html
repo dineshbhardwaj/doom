@@ -1,0 +1,702 @@
+<style>
+  :root {
+    /* doom-one (dark) — the working default */
+    --bg:        #282c34;
+    --bg-alt:    #21242b;
+    --bg-inset:  #1b1e24;
+    --panel:     #2c313a;
+    --fg:        #bbc2cf;
+    --fg-muted:  #7c828d;
+    --fg-faint:  #5B6268;   /* doom-one comment grey */
+    --border:    #3a3f4b;
+    --border-soft:#31353f;
+    --accent:    #51afef;   /* doom blue */
+    --green:     #98be65;
+    --yellow:    #ECBE7B;
+    --orange:    #da8548;
+    --red:       #ff6c6b;
+    --magenta:   #c678dd;
+    --cyan:      #46d9ff;
+    --accent-wash: color-mix(in srgb, var(--accent) 14%, transparent);
+    --green-wash:  color-mix(in srgb, var(--green) 16%, transparent);
+    --shadow:    0 1px 0 rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Menlo", "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+
+    --measure: 68ch;
+    --wide: 960px;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      /* doom-one-light / atom one-light */
+      --bg:        #fafafa;
+      --bg-alt:    #f2f2f3;
+      --bg-inset:  #ececed;
+      --panel:     #ffffff;
+      --fg:        #383a42;
+      --fg-muted:  #7a7d85;
+      --fg-faint:  #a0a1a7;
+      --border:    #dddde1;
+      --border-soft:#e6e6e9;
+      --accent:    #4078f2;
+      --green:     #50a14f;
+      --yellow:    #c18401;
+      --orange:    #b26a00;
+      --red:       #e45649;
+      --magenta:   #a626a4;
+      --cyan:      #0184bc;
+      --shadow:    0 1px 0 rgba(0,0,0,.03), 0 10px 30px -18px rgba(24,30,50,.35);
+    }
+  }
+  /* explicit toggle wins over the media query in both directions */
+  :root[data-theme="light"] {
+    --bg:#fafafa; --bg-alt:#f2f2f3; --bg-inset:#ececed; --panel:#ffffff;
+    --fg:#383a42; --fg-muted:#7a7d85; --fg-faint:#a0a1a7;
+    --border:#dddde1; --border-soft:#e6e6e9;
+    --accent:#4078f2; --green:#50a14f; --yellow:#c18401; --orange:#b26a00;
+    --red:#e45649; --magenta:#a626a4; --cyan:#0184bc;
+    --shadow:0 1px 0 rgba(0,0,0,.03), 0 10px 30px -18px rgba(24,30,50,.35);
+  }
+  :root[data-theme="dark"] {
+    --bg:#282c34; --bg-alt:#21242b; --bg-inset:#1b1e24; --panel:#2c313a;
+    --fg:#bbc2cf; --fg-muted:#7c828d; --fg-faint:#5B6268;
+    --border:#3a3f4b; --border-soft:#31353f;
+    --accent:#51afef; --green:#98be65; --yellow:#ECBE7B; --orange:#da8548;
+    --red:#ff6c6b; --magenta:#c678dd; --cyan:#46d9ff;
+    --shadow:0 1px 0 rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+
+  * { box-sizing: border-box; }
+
+  body { margin: 0; }
+
+  .page {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    padding-bottom: 5rem;
+  }
+
+  .wrap { width: 100%; max-width: var(--wide); margin: 0 auto; padding: 0 1.5rem; }
+  .prose { max-width: var(--measure); }
+
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+
+  /* ---- top bar ---- */
+  .topbar {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    padding: .7rem 1.5rem;
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .topbar .brand {
+    font-family: var(--font-mono); font-size: .82rem; letter-spacing: .04em;
+    color: var(--fg-muted);
+  }
+  .topbar .brand b { color: var(--fg); font-weight: 600; }
+  .topbar .brand .dot { color: var(--accent); }
+  .toggle {
+    font-family: var(--font-mono); font-size: .74rem; letter-spacing: .05em;
+    color: var(--fg-muted); background: var(--bg-alt);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: .35rem .6rem; cursor: pointer;
+  }
+  .toggle:hover { color: var(--fg); border-color: var(--accent); }
+
+  /* ---- hero ---- */
+  .hero { padding: 3.4rem 0 2.2rem; }
+  .eyebrow {
+    font-family: var(--font-mono); font-size: .74rem; text-transform: uppercase;
+    letter-spacing: .22em; color: var(--accent); margin: 0 0 1rem;
+  }
+  h1 {
+    font-size: clamp(2.1rem, 5vw, 3.1rem); line-height: 1.05; letter-spacing: -.02em;
+    margin: 0 0 .9rem; font-weight: 700; text-wrap: balance;
+  }
+  h1 .fade { color: var(--fg-muted); }
+  .lede { font-size: 1.12rem; color: var(--fg-muted); max-width: 60ch; margin: 0; }
+  .lede b { color: var(--fg); font-weight: 600; }
+
+  /* ---- the 6 daily keys strip ---- */
+  .loop {
+    margin: 2.4rem 0 .5rem;
+    border: 1px solid var(--border); border-radius: 12px;
+    background: linear-gradient(180deg, var(--panel), var(--bg-alt));
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .loop-head {
+    padding: .7rem 1.1rem; border-bottom: 1px solid var(--border-soft);
+    font-family: var(--font-mono); font-size: .72rem; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--fg-faint);
+    display: flex; align-items: center; gap: .5rem;
+  }
+  .loop-head::before { content: "●"; color: var(--green); font-size: .6rem; }
+  .loop-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+  }
+  .loop-cell {
+    padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: .55rem;
+    border-right: 1px solid var(--border-soft); border-bottom: 1px solid var(--border-soft);
+  }
+  .loop-grid .loop-cell:nth-child(3n) { border-right: none; }
+  .loop-grid .loop-cell:nth-last-child(-n+3) { border-bottom: none; }
+  .loop-cell .what { font-size: .92rem; color: var(--fg); }
+  .loop-cell .what b { font-weight: 600; }
+
+  @media (max-width: 620px) {
+    .loop-grid { grid-template-columns: 1fr; }
+    .loop-cell { border-right: none; }
+    .loop-grid .loop-cell:nth-last-child(-n+3):not(:last-child) { border-bottom: 1px solid var(--border-soft); }
+  }
+
+  /* ---- keycaps ---- */
+  .chord { display: inline-flex; gap: .28rem; align-items: center; flex-wrap: wrap; }
+  kbd {
+    font-family: var(--font-mono); font-size: .8rem; line-height: 1;
+    color: var(--fg); background: var(--bg-inset);
+    border: 1px solid var(--border);
+    border-bottom-width: 2px; border-radius: 5px;
+    padding: .32em .5em; min-width: 1.5em; text-align: center;
+    white-space: nowrap;
+  }
+  kbd.lead { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+  /* compact inline key for tables */
+  code.key {
+    font-family: var(--font-mono); font-size: .8rem;
+    color: var(--fg); background: var(--bg-inset);
+    border: 1px solid var(--border-soft); border-radius: 5px;
+    padding: .18em .5em; white-space: nowrap;
+  }
+  code.cmd {
+    font-family: var(--font-mono); font-size: .82rem; color: var(--magenta);
+    white-space: nowrap;
+  }
+  :root[data-theme="light"] code.cmd, .page code.cmd { }
+
+  /* ---- sections ---- */
+  section { padding: 2.6rem 0 .4rem; scroll-margin-top: 4rem; }
+  .sec-label {
+    font-family: var(--font-mono); font-size: .72rem; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--fg-faint); margin: 0 0 .5rem;
+  }
+  h2 {
+    font-size: 1.5rem; letter-spacing: -.01em; margin: 0 0 1rem; font-weight: 650;
+    text-wrap: balance;
+  }
+  h3 { font-size: 1.02rem; margin: 1.6rem 0 .5rem; font-weight: 600; }
+  p { margin: 0 0 1rem; }
+  .muted { color: var(--fg-muted); }
+
+  hr.rule { border: none; border-top: 1px solid var(--border-soft); margin: 2.6rem 0 0; }
+
+  /* ---- cards grid (mental model) ---- */
+  .cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin: 1.2rem 0; }
+  @media (max-width: 620px) { .cards { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--panel); border: 1px solid var(--border-soft);
+    border-radius: 10px; padding: 1.1rem 1.2rem;
+  }
+  .card .n {
+    font-family: var(--font-mono); font-size: .72rem; color: var(--accent);
+    letter-spacing: .1em;
+  }
+  .card h4 { margin: .35rem 0 .4rem; font-size: 1rem; font-weight: 600; }
+  .card p { margin: 0; font-size: .92rem; color: var(--fg-muted); }
+  .card p code { font-family: var(--font-mono); font-size: .85em; color: var(--accent); }
+
+  /* ---- lifecycle flow ---- */
+  .flow { display: flex; align-items: stretch; gap: .5rem; flex-wrap: wrap; margin: 1rem 0 1.4rem; }
+  .state {
+    flex: 1 1 auto; min-width: 120px;
+    border: 1px solid var(--border); border-radius: 9px;
+    background: var(--panel); padding: .8rem .9rem;
+    display: flex; flex-direction: column; gap: .3rem;
+  }
+  .state .kw { font-family: var(--font-mono); font-weight: 600; font-size: .95rem; }
+  .state .kw.todo   { color: var(--fg-muted); }
+  .state .kw.strt   { color: var(--green); }
+  .state .kw.review { color: var(--yellow); }
+  .state .kw.done   { color: var(--accent); }
+  .state .desc { font-size: .82rem; color: var(--fg-muted); }
+  .arrow { display: flex; align-items: center; color: var(--fg-faint); font-family: var(--font-mono); }
+  @media (max-width: 620px) { .arrow { transform: rotate(90deg); } }
+
+  .kwset {
+    font-family: var(--font-mono); font-size: .84rem; color: var(--fg-muted);
+    background: var(--bg-inset); border: 1px solid var(--border-soft); border-radius: 8px;
+    padding: .7rem .9rem; overflow-x: auto;
+  }
+  .kwset b { color: var(--green); }
+  .kwset .rv { color: var(--yellow); }
+  .kwset .dn { color: var(--accent); }
+
+  /* ---- window grid mockup ---- */
+  .mock {
+    display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 74px;
+    gap: 8px; margin: 1.1rem 0 .8rem;
+    background: var(--bg-inset); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px;
+  }
+  .pane {
+    border-radius: 7px; padding: .55rem .65rem; display: flex; flex-direction: column;
+    justify-content: space-between; border: 1px solid var(--border-soft);
+    font-family: var(--font-mono); font-size: .74rem;
+    background: var(--panel);
+  }
+  .pane .slot { color: var(--fg-faint); font-size: .68rem; }
+  .pane .who { color: var(--fg); }
+  .pane.agenda { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+  .pane.agenda .who { color: var(--accent); }
+  .pane.feed   { border-color: color-mix(in srgb, var(--magenta) 45%, transparent); }
+  .pane.feed .who { color: var(--magenta); }
+  .pane.claude { border-color: color-mix(in srgb, var(--green) 50%, transparent); }
+  .pane.claude .who { color: var(--green); }
+  .pane.spare { opacity: .5; }
+  @media (max-width: 560px) { .mock { grid-auto-rows: 62px; } }
+
+  /* ---- timeline (a day) ---- */
+  .timeline { display: flex; flex-direction: column; gap: 0; margin: 1rem 0; }
+  .tl {
+    display: grid; grid-template-columns: 132px 1fr; gap: 1.2rem;
+    padding: 1.1rem 0; border-top: 1px solid var(--border-soft);
+  }
+  .tl:first-child { border-top: none; }
+  .tl .when {
+    font-family: var(--font-mono); font-size: .78rem; color: var(--accent);
+    letter-spacing: .04em; padding-top: .15rem;
+  }
+  .tl .body { min-width: 0; }
+  .tl h4 { margin: 0 0 .45rem; font-size: 1rem; font-weight: 600; }
+  .tl p { margin: 0 0 .5rem; font-size: .93rem; color: var(--fg-muted); }
+  .tl p:last-child { margin-bottom: 0; }
+  .tl code { font-family: var(--font-mono); font-size: .85em; color: var(--fg); }
+  @media (max-width: 560px) { .tl { grid-template-columns: 1fr; gap: .4rem; } }
+
+  /* ---- tables ---- */
+  .tbl-wrap { overflow-x: auto; margin: 1rem 0 1.4rem; border: 1px solid var(--border-soft); border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  caption {
+    text-align: left; font-family: var(--font-mono); font-size: .72rem;
+    letter-spacing: .12em; text-transform: uppercase; color: var(--fg-faint);
+    padding: .8rem 1rem .2rem;
+  }
+  th, td { text-align: left; padding: .6rem 1rem; vertical-align: top; }
+  thead th {
+    font-family: var(--font-mono); font-size: .68rem; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--fg-faint); font-weight: 500;
+    border-bottom: 1px solid var(--border);
+  }
+  tbody tr { border-top: 1px solid var(--border-soft); }
+  tbody tr:first-child { border-top: none; }
+  td .desc { color: var(--fg-muted); }
+  td code.cmd { display: inline-block; }
+
+  /* ---- gate steps ---- */
+  .steps { display: flex; flex-direction: column; gap: .7rem; margin: 1.1rem 0; }
+  .step {
+    display: grid; grid-template-columns: 2.2rem 1fr; gap: .9rem; align-items: start;
+    background: var(--panel); border: 1px solid var(--border-soft);
+    border-radius: 10px; padding: .9rem 1rem;
+  }
+  .step .num {
+    font-family: var(--font-mono); font-weight: 700; font-size: 1rem;
+    color: var(--accent); text-align: center; padding-top: .1rem;
+  }
+  .step h4 { margin: 0 0 .25rem; font-size: .98rem; font-weight: 600; }
+  .step p { margin: 0; font-size: .9rem; color: var(--fg-muted); }
+  .step p code { font-family: var(--font-mono); color: var(--fg); font-size: .85em; }
+
+  .callout {
+    border-left: 3px solid var(--accent); background: var(--accent-wash);
+    border-radius: 0 8px 8px 0; padding: .8rem 1rem; margin: 1.2rem 0;
+    font-size: .92rem;
+  }
+  .callout.good { border-left-color: var(--green); background: var(--green-wash); }
+  .callout b { color: var(--fg); }
+  .callout code { font-family: var(--font-mono); font-size: .85em; }
+
+  ul.clean { margin: .4rem 0 1.2rem; padding-left: 1.1rem; }
+  ul.clean li { margin: .4rem 0; color: var(--fg-muted); }
+  ul.clean li b { color: var(--fg); font-weight: 600; }
+  ul.clean li code { font-family: var(--font-mono); font-size: .85em; color: var(--fg); }
+
+  .footer {
+    margin-top: 3rem; padding-top: 1.4rem; border-top: 1px solid var(--border-soft);
+    font-family: var(--font-mono); font-size: .78rem; color: var(--fg-faint);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .loop, .card, .step { transition: border-color .15s ease, transform .15s ease; }
+    .card:hover, .step:hover { border-color: var(--border); }
+  }
+</style>
+
+<div class="page">
+  <div class="topbar">
+    <div class="brand"><b>EDA IDE</b> <span class="dot">·</span> Daily Flow</div>
+    <button class="toggle" id="themeToggle" type="button" aria-label="Toggle colour theme">◐ theme</button>
+  </div>
+
+  <div class="wrap">
+    <header class="hero">
+      <p class="eyebrow">Emacs · Claude · org-mode</p>
+      <h1>How to work, <span class="fade">every day.</span></h1>
+      <p class="lede">org is the kernel, Claude is the worker, the worktree is where code lands — and the <b>weekly report falls out for free</b>. This is the loop you run daily.</p>
+
+      <div class="loop">
+        <div class="loop-head">The six keys you'll actually use</div>
+        <div class="loop-grid">
+          <div class="loop-cell">
+            <span class="chord"><kbd class="lead">SPC</kbd><kbd>k</kbd><kbd>o</kbd><kbd>c</kbd></span>
+            <span class="what"><b>Clock in</b> — start work + timer</span>
+          </div>
+          <div class="loop-cell">
+            <span class="chord"><kbd class="lead">SPC</kbd><kbd>k</kbd><kbd>o</kbd><kbd>j</kbd></span>
+            <span class="what"><b>Jump</b> — go to any task</span>
+          </div>
+          <div class="loop-cell">
+            <span class="chord"><kbd class="lead">SPC</kbd><kbd>k</kbd><kbd>o</kbd><kbd>z</kbd></span>
+            <span class="what"><b>Idle</b> — toggle when away</span>
+          </div>
+          <div class="loop-cell">
+            <span class="chord"><kbd class="lead">SPC</kbd><kbd>k</kbd><kbd>o</kbd><kbd>d</kbd></span>
+            <span class="what"><b>Done</b> — run the gate</span>
+          </div>
+          <div class="loop-cell">
+            <span class="chord"><kbd class="lead">SPC</kbd><kbd>k</kbd><kbd>o</kbd><kbd>r</kbd></span>
+            <span class="what"><b>Report</b> — weekly rollup</span>
+          </div>
+          <div class="loop-cell">
+            <span class="chord"><kbd class="lead">SPC</kbd><kbd>k</kbd><kbd>o</kbd><kbd>0</kbd></span>
+            <span class="what"><b>Clock out all</b> — end of day</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- MENTAL MODEL -->
+    <section id="model">
+      <p class="sec-label">01 — The mental model</p>
+      <h2>Four ideas the whole system rests on</h2>
+      <div class="cards">
+        <div class="card">
+          <span class="n">A</span>
+          <h4>The org heading <em>is</em> the task</h4>
+          <p>One heading = one worktree = one perspective = one Claude session. You act on the heading; everything else follows.</p>
+        </div>
+        <div class="card">
+          <span class="n">B</span>
+          <h4>One command to get anywhere</h4>
+          <p><code>SPC k o j</code> switches to the task's worktree and raises/resumes its Claude session. Your single point of contact.</p>
+        </div>
+        <div class="card">
+          <span class="n">C</span>
+          <h4>Effort clock ≠ org clock</h4>
+          <p>Clock several tasks at once — each earns full time. Idle overlap is subtracted only at report time; raw <code>CLOCK:</code> lines are never touched.</p>
+        </div>
+        <div class="card">
+          <span class="n">D</span>
+          <h4>Sessions are deterministic</h4>
+          <p>Each task stores its own <code>:CLAUDE_SESSION:</code> id, so Claude is always reattached by that stamped id — <code>--resume</code> when a transcript exists, else created under the same id with <code>--session-id</code> — never scraped from log files.</p>
+        </div>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <!-- LIFECYCLE -->
+    <section id="lifecycle" class="prose">
+      <p class="sec-label">02 — Lifecycle</p>
+      <h2>A task moves through four states</h2>
+    </section>
+    <div class="flow">
+      <div class="state"><span class="kw todo">TODO</span><span class="desc">Captured, not started</span></div>
+      <div class="arrow">→</div>
+      <div class="state"><span class="kw strt">STRT</span><span class="desc">Working — Claude auto-starts</span></div>
+      <div class="arrow">→</div>
+      <div class="state"><span class="kw review">REVIEW</span><span class="desc">Done working — session stays live</span></div>
+      <div class="arrow">→</div>
+      <div class="state"><span class="kw done">DONE</span><span class="desc">Passed the 4-check gate</span></div>
+    </div>
+    <div class="prose">
+      <p class="muted">Full keyword set (Doom stock + our <code class="cmd">REVIEW</code>):</p>
+      <div class="kwset">TODO · PROJ · LOOP · <b>STRT</b> · WAIT · HOLD · IDEA · <span class="rv">REVIEW</span> &nbsp;|&nbsp; <span class="dn">DONE</span> · KILL</div>
+      <p class="muted" style="margin-top:1rem"><b style="color:var(--green)">STRT</b> autostarts the session for EDA tasks. <b style="color:var(--yellow)">REVIEW</b> keeps the session alive so <code>SPC k o j</code> lands you on running Claude for the review chat. <b style="color:var(--accent)">DONE</b> is only reachable through the gate; a veto drops you back to REVIEW.</p>
+    </div>
+
+    <hr class="rule">
+
+    <!-- THE GRID -->
+    <section id="grid">
+      <p class="sec-label">03 — Your screen</p>
+      <h2>The grid rebuilds itself as you clock in and out</h2>
+      <p class="prose muted">Fixed front slots, then one Claude pane per clocked task in clock order. Below: the layout with two tasks clocked (a 2×3 grid).</p>
+
+      <div class="mock" role="img" aria-label="Window grid: agenda, elfeed list, elfeed article on top row; two Claude panes and a spare on the bottom row">
+        <div class="pane agenda"><span class="slot">slot 0</span><span class="who">Org agenda</span></div>
+        <div class="pane feed"><span class="slot">slot 1</span><span class="who">elfeed · list</span></div>
+        <div class="pane feed"><span class="slot">slot 2</span><span class="who">elfeed · article</span></div>
+        <div class="pane claude"><span class="slot">slot 3</span><span class="who">Claude · task A</span></div>
+        <div class="pane claude"><span class="slot">slot 4</span><span class="who">Claude · task B</span></div>
+        <div class="pane spare"><span class="slot">slot 5</span><span class="who">*scratch*</span></div>
+      </div>
+
+      <div class="tbl-wrap">
+        <table>
+          <caption>Window keys</caption>
+          <thead><tr><th style="width:34%">Key</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td><code class="key">SPC k o g</code></td><td class="desc">Rebuild / restore the grid on demand</td></tr>
+            <tr><td><code class="key">C-x 1</code></td><td class="desc">Zoom current pane (suspends auto-relayout)</td></tr>
+            <tr><td><code class="key">C-x 0</code></td><td class="desc">Restore the grid</td></tr>
+            <tr><td><code class="key">M-o</code></td><td class="desc">Jump to a window (ace-window)</td></tr>
+            <tr><td><code class="key">s-1</code> … <code class="key">s-9</code></td><td class="desc">Jump straight to window N (winum)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="prose muted">Layout scales with clocked tasks: 0→1×3, 1→2×2, 2–3→2×3, 4+→2×4 (caps at 8 panes). It also renders on the first frame of a fresh Emacs; if it ever looks collapsed, <code>SPC k o g</code> rebuilds it.</p>
+
+      <div class="callout"><b>Mode line — what's clocked.</b> The mode line names your clocked tasks, so you always know what's running without opening the agenda: <code>⏱×2 1.trying something 2.killer emacs</code> — numbered in clock order, each as its first couple of words (up to 4 tasks, then a <code>+N</code> tail). On a break the idle clock takes over the display — <code>⏸ Idle · personal (⏱×2 held)</code> — and clearing idle (<code>SPC k o z</code> again) brings the task list back. Hover for the full titles.</div>
+    </section>
+
+    <hr class="rule">
+
+    <!-- A DAY -->
+    <section id="day">
+      <p class="sec-label">04 — A day in the life</p>
+      <h2>From morning orient to the weekly report</h2>
+      <div class="timeline">
+        <div class="tl">
+          <div class="when">☀ Morning</div>
+          <div class="body">
+            <h4>Orient</h4>
+            <p>Start Emacs (or <code>emacsclient -nw</code>). The grid comes up with your agenda in slot 0 — skim it and pick your work.</p>
+            <p>Optional health check: <code>SPC k o P</code> (doctor) confirms profile, roots, tools, and which features are live on this machine.</p>
+          </div>
+        </div>
+        <div class="tl">
+          <div class="when">▶ Start a task</div>
+          <div class="body">
+            <h4>Init → STRT → clock in</h4>
+            <p>First time on a heading? Stamp the schema: <code>SPC k o i</code>. Each prompt autofills a default (current value, else your last-used) and completes over your history + the worktrees on disk — <code>RET</code> takes the default, <code>TAB</code> picks a past value. In a hurry, <code>SPC k o I</code> asks only for the slug. If the worktree dir doesn't exist yet, init offers to create it — a git worktree (repo + branch) or a plain directory; do it any time with <code>SPC k o w</code>. Then mark it <code>STRT</code> — Claude auto-starts.</p>
+            <p>Clock in for time tracking: <code>SPC k o c</code> — starts the timer, ensures the session, and rebuilds the default grid so this task gets its own Claude window (fires even if you'd zoomed a pane with <code>C-x 1</code>). <code>SPC p f</code> now finds files scoped to that worktree.</p>
+          </div>
+        </div>
+        <div class="tl">
+          <div class="when">⇄ Parallel</div>
+          <div class="body">
+            <h4>Work several tasks at once</h4>
+            <p>Clock in another heading with <code>SPC k o c</code> — overlapping clocks are allowed and each earns full time. The grid relayouts automatically.</p>
+            <p>Move around with <code>SPC k o j</code> (by task) or <code>M-o</code> / <code>s-N</code> (by window). <code>SPC k o l</code> lists what's running.</p>
+          </div>
+        </div>
+        <div class="tl">
+          <div class="when">☕ Breaks</div>
+          <div class="body">
+            <h4>Toggle idle</h4>
+            <p>Stepping away? <code>SPC k o z</code> starts the per-environment Idle clock. It's a <b>toggle</b> — <b>press <code>SPC k o z</code> again when you're back to end idle</b>. On the way out it drops a non-destructive <code>IDLE_ADJ ▶ overlapped …</code> note onto every clocked task, and overlapping idle time is subtracted at report time.</p>
+            <p class="muted">Idle also ends with <code>SPC k o 0</code> (clock out all), or <code>z</code> in the agenda.</p>
+          </div>
+        </div>
+        <div class="tl">
+          <div class="when">✓ Finish</div>
+          <div class="body">
+            <h4>REVIEW → DONE</h4>
+            <p>Move the task to <code>REVIEW</code>; the session stays live for a final review chat via <code>SPC k o j</code>.</p>
+            <p>Run <code>SPC k o d</code> — the gate checks commit + review + Claude self-review + memory. Don't want to hand-write the memory note? <code>SPC k o m</code> lets Claude distill it.</p>
+          </div>
+        </div>
+        <div class="tl">
+          <div class="when">🌙 End of day</div>
+          <div class="body">
+            <h4>Clock out</h4>
+            <p><code>SPC k o 0</code> clocks out everything and kills those sessions — or <code>SPC k o C</code> one at a time. Anything left in STRT/REVIEW is tomorrow's starting point.</p>
+          </div>
+        </div>
+        <div class="tl">
+          <div class="when">📅 End of week</div>
+          <div class="body">
+            <h4>The report writes itself</h4>
+            <p><code>SPC k o r</code> generates <code>reports/weekly-&lt;isoweek&gt;.org</code> and opens it. See section 06.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <!-- CHEAT SHEET -->
+    <section id="keys">
+      <p class="sec-label">05 — Cheat-sheet</p>
+      <h2>Every key, in one place</h2>
+
+      <div class="tbl-wrap">
+        <table>
+          <caption>SPC k o — org task engine</caption>
+          <thead><tr><th style="width:22%">Key</th><th style="width:34%">Command</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code class="key">SPC k o i</code></td><td><code class="cmd">eda/task-init</code></td><td class="desc">Stamp the schema — prompts autofill defaults + remember past values</td></tr>
+            <tr><td><code class="key">SPC k o I</code></td><td><code class="cmd">eda/task-init-quick</code></td><td class="desc">Fast stamp: asks only for the slug, reuses the rest</td></tr>
+            <tr><td><code class="key">SPC k o s</code></td><td><code class="cmd">eda/task-start</code></td><td class="desc">Start/raise the Claude session (idempotent)</td></tr>
+            <tr><td><code class="key">SPC k o j</code></td><td><code class="cmd">eda/task-jump</code></td><td class="desc">Go to task: worktree persp + raise/resume Claude</td></tr>
+            <tr><td><code class="key">SPC k o w</code></td><td><code class="cmd">eda/task-create-worktree</code></td><td class="desc">Create the worktree dir — git worktree or plain directory</td></tr>
+            <tr><td><code class="key">SPC k o y</code></td><td><code class="cmd">eda/task-copy-resume</code></td><td class="desc">Copy the <code>claude --resume …</code> command</td></tr>
+            <tr><td><code class="key">SPC k o t</code></td><td><code class="cmd">eda/task-view-transcript</code></td><td class="desc">Open the conversation in a scrollable buffer (also <code class="key">C-c t</code> inside the vterm)</td></tr>
+            <tr><td><code class="key">SPC k o c</code></td><td><code class="cmd">eda/task-clock-in</code></td><td class="desc">Start effort clock (+ session + timer) + rebuild grid with this task's window</td></tr>
+            <tr><td><code class="key">SPC k o C</code></td><td><code class="cmd">eda/task-clock-out</code></td><td class="desc">Stop clock, write CLOCK line, kill session</td></tr>
+            <tr><td><code class="key">SPC k o z</code></td><td><code class="cmd">eda/pclock-idle-toggle</code></td><td class="desc">Toggle the Idle clock — once to start, <b>again to end</b> (logs overlap on active tasks)</td></tr>
+            <tr><td><code class="key">SPC k o l</code></td><td><code class="cmd">eda/pclock-list</code></td><td class="desc">List active (overlapping) clocks</td></tr>
+            <tr><td><code class="key">SPC k o 0</code></td><td><code class="cmd">eda/pclock-out-all</code></td><td class="desc">Clock out everything</td></tr>
+            <tr><td><code class="key">SPC k o d</code></td><td><code class="cmd">eda/task-done</code></td><td class="desc">Run the DONE gate</td></tr>
+            <tr><td><code class="key">SPC k o m</code></td><td><code class="cmd">eda/mem-distill-for-task</code></td><td class="desc">Have Claude distill a memory entry</td></tr>
+            <tr><td><code class="key">SPC k o r</code></td><td><code class="cmd">eda/report-weekly</code></td><td class="desc">Generate this week's report</td></tr>
+            <tr><td><code class="key">SPC k o g</code></td><td><code class="cmd">eda/grid-refresh</code></td><td class="desc">Rebuild the window grid</td></tr>
+            <tr><td><code class="key">SPC k o P</code></td><td><code class="cmd">eda/portable-doctor</code></td><td class="desc">Environment / degradation audit</td></tr>
+            <tr><td><code class="key">SPC k o ?</code></td><td><code class="cmd">eda/portable-describe</code></td><td class="desc">Show profile + roots</td></tr>
+            <tr><td><code class="key">SPC k o M</code></td><td><code class="cmd">eda/mcp-toggle</code></td><td class="desc">Toggle the optional MCP bridge</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="tbl-wrap">
+        <table>
+          <caption>SPC k y — client sync</caption>
+          <thead><tr><th style="width:22%">Key</th><th style="width:34%">Command</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code class="key">SPC k y a</code></td><td><code class="cmd">eda/client-add-task</code></td><td class="desc">Add a client task (queued to outbox off-client)</td></tr>
+            <tr><td><code class="key">SPC k y i</code></td><td><code class="cmd">eda/client-idle-clock</code></td><td class="desc">Log client idle (queued)</td></tr>
+            <tr><td><code class="key">SPC k y e</code></td><td><code class="cmd">eda/client-sync-export</code></td><td class="desc">Export (full on client / delta on Mac) + email</td></tr>
+            <tr><td><code class="key">SPC k y m</code></td><td><code class="cmd">eda/client-sync-import</code></td><td class="desc">Import (union-merge on client / mirror on Mac)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="tbl-wrap">
+        <table>
+          <caption>In the agenda</caption>
+          <thead><tr><th style="width:22%">Key</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td><code class="key">I</code> / <code class="key">O</code></td><td class="desc">Clock in / out the task at point</td></tr>
+            <tr><td><code class="key">z</code></td><td class="desc">Toggle idle</td></tr>
+            <tr><td><code class="key">g j</code></td><td class="desc">Jump to the task</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <!-- DONE GATE -->
+    <section id="gate" class="prose">
+      <p class="sec-label">06 — The DONE gate</p>
+      <h2>DONE is earned, not typed</h2>
+      <p class="muted"><code>SPC k o d</code> runs four checks in order, advancing a <code>:DELIVERY:</code> marker from <code>pending</code> to <code>done</code>. Any veto resets the task to REVIEW.</p>
+    </section>
+    <div class="steps">
+      <div class="step"><div class="num">1</div><div><h4>Committed</h4><p>Worktree is clean (<code>git status</code> porcelain). Dirty? It offers to auto-commit. Not a git repo → this check is voided (N/A).</p></div></div>
+      <div class="step"><div class="num">2</div><div><h4>Review prompt</h4><p>Three quick questions — delivered? / tested? / follow-ups? — logged into the task's <code>LOGBOOK</code>.</p></div></div>
+      <div class="step"><div class="num">3</div><div><h4>Claude self-review</h4><p><code>claude -p</code> reviews your branch diff; you accept or veto. If Claude is unavailable, you can waive-with-log.</p></div></div>
+      <div class="step"><div class="num">4</div><div><h4>Memory</h4><p>A non-trivial entry must exist in the task's <code>:MEM_SCOPE:</code> store. Missing? It offers to distill one (or writes a stub) and fails the gate so a human reviews memory first.</p></div></div>
+    </div>
+    <div class="callout good"><b>On all-pass:</b> the session is killed, the transcript is committed as a git-checkable delivery, <code>:DELIVERY: done</code>, and the state flips to <code>DONE</code>.</div>
+
+    <hr class="rule">
+
+    <!-- REPORT -->
+    <section id="report" class="prose">
+      <p class="sec-label">07 — Weekly report</p>
+      <h2>The numbers fall out for free</h2>
+      <p><code>SPC k o r</code> writes <code>reports/weekly-&lt;isoweek&gt;.org</code> for the current ISO week (Mon 00:00 onward). Everything is computed in elisp, so the numbers are exact and testable.</p>
+      <ul class="clean">
+        <li><b>Collective time</b> — gross, idle-overlap, and <b>net</b> (gross − idle∩task).</li>
+        <li><b>By tag</b> — net time per tag (billable, project, …).</li>
+        <li><b>By client</b> — net time per client.</li>
+        <li><b>By task</b> — net time per task, sorted high → low.</li>
+        <li><b>Delivered digest</b> — every task marked <code>DONE</code> this week, with its review line.</li>
+      </ul>
+      <div class="callout"><b>Non-destructive idle math:</b> raw <code>CLOCK:</code> lines stay intact; overlap is merged and subtracted only in the report. <code>v c</code> in the agenda still audits raw overlap. Headless runs use <code class="cmd">eda/report-weekly-batch</code> (launchd/cron, no frame).</div>
+    </section>
+
+    <hr class="rule">
+
+    <!-- CLIENT + MEMORY -->
+    <section id="client">
+      <p class="sec-label">08 — Client, mobile &amp; memory</p>
+      <h2>Two machines, two memory stores</h2>
+      <div class="cards">
+        <div class="card">
+          <span class="n">CLIENT</span>
+          <h4>Isolated Linux box</h4>
+          <p>Runs its own Emacs + Claude; never SSH'd from the Mac. Bridged by email + Dropbox, not a live link. On the Mac, client <code>tasks.org</code> is read-only — you queue additions to an outbox with <code>SPC k y a</code> / <code>SPC k y i</code>, then sync with <code>SPC k y e</code> / <code>SPC k y m</code>. Re-import never duplicates.</p>
+        </div>
+        <div class="card">
+          <span class="n">MOBILE</span>
+          <h4>organice + Dropbox</h4>
+          <p>Over <code>personal.org</code> + the append-only outbox. Folder sync only — no extra tooling.</p>
+        </div>
+        <div class="card">
+          <span class="n">MEM · P</span>
+          <h4>Personal store</h4>
+          <p><code>~/.claude/memory/personal/</code> — syncs everywhere. Distilled per-DONE, or on demand with <code>SPC k o m</code>.</p>
+        </div>
+        <div class="card">
+          <span class="n">MEM · C</span>
+          <h4>Client store</h4>
+          <p><code>~/.claude/memory/clients/&lt;x&gt;/</code> — lives on the client box only, never synced off. The <code>:MEM_SCOPE:</code> property picks the store.</p>
+        </div>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <!-- TROUBLESHOOTING -->
+    <section id="fix">
+      <p class="sec-label">09 — If something looks off</p>
+      <h2>Quick fixes</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th style="width:44%">Symptom</th><th>Try</th></tr></thead>
+          <tbody>
+            <tr><td class="desc">Grid collapsed to one window</td><td><code class="key">SPC k o g</code> to rebuild</td></tr>
+            <tr><td class="desc">Claude didn't start on STRT</td><td>Confirm it's an EDA task (under the worktree root); <code class="key">SPC k o s</code> to start manually</td></tr>
+            <tr><td class="desc">"Which machine / what's missing?"</td><td><code class="key">SPC k o P</code> — doctor lists profile, roots, tools, disabled features</td></tr>
+            <tr><td class="desc">Lost the resume command</td><td><code class="key">SPC k o y</code> copies <code>claude --resume …</code></td></tr>
+            <tr><td class="desc"><code>STRT</code>/clock-in opens a <b>fresh, empty</b> Claude — the old conversation isn't resumed</td><td>Resume needs the transcript <code>~/.claude/projects/&lt;flat-cwd&gt;/&lt;sid&gt;.jsonl</code>; if it's missing the spawn correctly falls back to a new session. Check <code>ls ~/.claude/projects/-Users-dinesh-eda-wt-&lt;slug&gt;/*.jsonl</code> — <b>empty for a task that has run</b> means transcripts aren't persisting. Usual cause: <b>Emacs was launched from <em>inside</em> a Claude session</b>, so <code>CLAUDECODE</code> / <code>CLAUDE_CODE_CHILD_SESSION</code> leaked into the spawned CLI and marked it a <em>child</em> — children never write a resumable transcript. <code class="cmd">eda/ws-claude--spawn</code> now scrubs those vars; reload <code>eda-workspace-claude.el</code> and the <b>next</b> spawn persists. The current buffer can't be back-filled — the fix applies going forward</td></tr>
+            <tr><td class="desc">Time looks wrong in the report</td><td>Check idle overlap; raw <code>CLOCK:</code> lines live in each <code>LOGBOOK</code>, <code>v c</code> audits overlap</td></tr>
+            <tr><td class="desc">Can't scroll up in a Claude pane</td><td>Claude runs on the terminal <b>alternate screen</b> (no scrollback) — the live pane and <code>C-\</code> copy-mode can't scroll back. Open the conversation in a scrollable buffer: <b><code>C-c t</code></b> from <em>inside</em> the Claude vterm (there the <code>SPC</code> leader goes to Claude, so <code>SPC k o t</code> only works from another window; <code>M-x eda/task-view-transcript</code> works anywhere). Task-started Claude auto-detects; a plain <code>claude</code> vterm shows a <b>picker</b> — pick yours by <em>time · project · title</em> (<code>C-u</code> always shows it). <code>g</code> refreshes, <code>q</code> buries</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="footer prose">
+      Source: <code>~/.config/doom/EDA-IDE-DAILY-FLOW.md</code> · keys verified against the live daemon.<br>
+      The daily loop: clock in → jump → idle → done → report → clock out all.
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var root = document.documentElement;
+    var btn = document.getElementById('themeToggle');
+    btn.addEventListener('click', function () {
+      var cur = root.getAttribute('data-theme');
+      if (!cur) {
+        cur = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+      root.setAttribute('data-theme', cur === 'dark' ? 'light' : 'dark');
+    });
+  })();
+</script>
