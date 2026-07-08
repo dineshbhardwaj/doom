@@ -3,12 +3,14 @@
 ;;; Phase 11 · Layer 5 — window grid + buffer ergonomics (E5/E13/E14/E15/E16).
 ;;;
 ;;; The default working layout is fixed at the front: slot 0 = the org (weekly)
-;;; agenda, slot 1 = elfeed; slots 2..n = one Claude pane per CLOCKED task, in
-;;; clock order. The grid shape is chosen by how many tasks are clocked and
-;;; re-rendered automatically on every clock in/out (via `eda/pclock-changed-hook'):
+;;; agenda, slot 1 = elfeed search (the one-line entry list), slot 2 = the
+;;; elfeed article (the `*elfeed-entry*' show buffer); slots 3..n = one Claude
+;;; pane per CLOCKED task, in clock order. The grid shape is chosen by how many
+;;; tasks are clocked and re-rendered automatically on every clock in/out (via
+;;; `eda/pclock-changed-hook'):
 ;;;
-;;;   0 clocked → agenda+elfeed (1×2)   1–2 → 2×2
-;;;   3–4 → 2×3                          5+  → 2×4  (caps at 8 windows)
+;;;   0 clocked → agenda+search+article (1×3)   1 → 2×2
+;;;   2–3 → 2×3                                  4+ → 2×4  (caps at 8 windows)
 ;;;
 ;;;   C-x 1  zoom the current pane (suspends auto-relayout)
 ;;;   C-x 0  restore the grid        M-o  jump to a window (ace-window)
@@ -29,14 +31,14 @@
 
 (defun eda/grid-layout-for-count (n)
   "Return plist (:windows W :rows R :cols C :shown S) for N clocked tasks.
-Window 0 holds the agenda and window 1 holds elfeed; the remaining W-2 hold
-Claude sessions. Caps at 8 windows; SHOWN is how many Claude panes are
-available (= W-2), never silently more."
+Window 0 holds the agenda, window 1 the elfeed list, window 2 the elfeed
+article; the remaining W-3 hold Claude sessions. Caps at 8 windows; SHOWN is
+how many Claude panes are available (= W-3), never silently more."
   (cond
-   ((<= n 0) (list :windows 2 :rows 1 :cols 2 :shown 0))
-   ((<= n 2) (list :windows 4 :rows 2 :cols 2 :shown 2))
-   ((<= n 4) (list :windows 6 :rows 2 :cols 3 :shown 4))
-   (t        (list :windows 8 :rows 2 :cols 4 :shown 6))))
+   ((<= n 0) (list :windows 3 :rows 1 :cols 3 :shown 0))
+   ((<= n 1) (list :windows 4 :rows 2 :cols 2 :shown 1))
+   ((<= n 3) (list :windows 6 :rows 2 :cols 3 :shown 3))
+   (t        (list :windows 8 :rows 2 :cols 4 :shown 5))))
 
 ;; --- Window builder --------------------------------------------------------
 
@@ -92,12 +94,24 @@ available (= W-2), never silently more."
 
 (defun eda/grid--elfeed-buffer ()
   "Return the elfeed search buffer for slot 1 (best-effort, no focus steal).
-Falls back to *scratch* if elfeed is unavailable so the grid never breaks."
+Falls back to *scratch* if elfeed is unavailable so the grid never breaks.
+The whole body is demoted to a message: loading elfeed pulls in gnus faces,
+whose inheritance can be transiently cyclic under doom-one during cold daemon
+start (\"Face inheritance results in inheritance cycle\"); that must degrade to
+scratch, never abort the layout."
   (or (get-buffer "*elfeed-search*")
-      (and (or (featurep 'elfeed) (require 'elfeed nil t) (fboundp 'elfeed))
-           (save-window-excursion
-             (ignore-errors (elfeed))
-             (get-buffer "*elfeed-search*")))
+      (with-demoted-errors "eda/grid elfeed slot: %S"
+        (when (or (featurep 'elfeed) (require 'elfeed nil t) (fboundp 'elfeed))
+          (save-window-excursion
+            (ignore-errors (elfeed))
+            (get-buffer "*elfeed-search*"))))
+      (get-buffer-create "*scratch*")))
+
+(defun eda/grid--elfeed-entry-buffer ()
+  "Return the elfeed article buffer for slot 2 (best-effort, no focus steal).
+This is elfeed's `*elfeed-entry*' show buffer, which only exists after an
+article has been opened from the list; falls back to *scratch* until then."
+  (or (get-buffer "*elfeed-entry*")
       (get-buffer-create "*scratch*")))
 
 ;; --- Refresh / restore / zoom ----------------------------------------------
@@ -119,21 +133,30 @@ Falls back to *scratch* if elfeed is unavailable so the grid never breaks."
     (condition-case err
         (let ((wins (eda/grid--build (plist-get spec :rows)
                                      (plist-get spec :cols))))
-          ;; Fixed front slots: 0 = agenda, 1 = elfeed.
-          (set-window-buffer (nth 0 wins) (eda/grid--agenda-buffer))
+          ;; Fixed front slots: 0 = agenda, 1 = elfeed list, 2 = elfeed article.
+          ;; Each slot is isolated: a buffer that misbehaves (e.g. a transient
+          ;; gnus face-inheritance cycle when elfeed first loads) leaves that one
+          ;; pane on *scratch* rather than aborting the whole layout into the
+          ;; single-window fallback below.
+          (with-demoted-errors "eda/grid agenda slot: %S"
+            (set-window-buffer (nth 0 wins) (eda/grid--agenda-buffer)))
           (when (nth 1 wins)
-            (set-window-buffer (nth 1 wins) (eda/grid--elfeed-buffer)))
-          ;; Claude panes start at slot 2, in clock order.
+            (with-demoted-errors "eda/grid elfeed slot: %S"
+              (set-window-buffer (nth 1 wins) (eda/grid--elfeed-buffer))))
+          (when (nth 2 wins)
+            (with-demoted-errors "eda/grid article slot: %S"
+              (set-window-buffer (nth 2 wins) (eda/grid--elfeed-entry-buffer))))
+          ;; Claude panes start at slot 3, in clock order.
           (cl-loop for i from 0 below (min shown n)
                    for id in order
-                   for w = (nth (+ 2 i) wins)
+                   for w = (nth (+ 3 i) wins)
                    when w do
                    (let ((buf (eda/grid--task-buffer id)))
                      (when buf
                        (set-window-buffer w buf)
                        (set-window-dedicated-p w t))))
           ;; leftover panes → scratch (so an off-breakpoint count looks clean)
-          (cl-loop for i from (+ 2 (min shown n)) below (length wins)
+          (cl-loop for i from (+ 3 (min shown n)) below (length wins)
                    for w = (nth i wins)
                    when w do (set-window-buffer w (get-buffer-create "*scratch*")))
           (when (> n shown)
@@ -163,6 +186,51 @@ Falls back to *scratch* if elfeed is unavailable so the grid never breaks."
     (condition-case _ (eda/grid-refresh) (error nil))))
 
 (add-hook 'eda/pclock-changed-hook #'eda/grid--maybe-refresh)
+
+;; --- Startup render (once, on the first usable frame) ----------------------
+;;
+;; The grid is otherwise only built on demand (`SPC k o g') or on clock in/out.
+;; This renders the default layout automatically when Emacs comes up. In a
+;; daemon there is NO usable frame at `emacs-startup-hook' time (window
+;; splitting would fail), so we wait for the first `emacsclient' frame via
+;; `server-after-make-frame-hook'; a plain GUI Emacs uses `emacs-startup-hook'.
+;; Clocked-task panes come from whatever `eda/pclock-active' restored on load.
+
+(defvar eda/grid-render-on-startup t
+  "When non-nil, render the default grid once at startup.")
+(defvar eda/grid--startup-done nil
+  "Non-nil once the startup grid render has run (guards re-fire on new frames).")
+
+(defun eda/grid--prewarm-faces ()
+  "Absorb the transient gnus/elfeed face-inheritance cycle once, harmlessly.
+Loading elfeed pulls in gnus faces whose :inherit is transiently cyclic on
+their FIRST realization under doom-one (an Emacs realization-order bug); the
+second realization is clean. Force that first realization here, demoted to a
+message, so it happens at startup rather than mid-grid on the user's screen."
+  (with-demoted-errors "eda/grid prewarm: %S"
+    (when (or (featurep 'elfeed) (require 'elfeed nil t))
+      (dolist (f '(gnus-group-news-low-empty gnus-group-news-low
+                   gnus-group-mail-1 gnus-group-mail-1-empty))
+        (when (facep f)
+          (ignore-errors (face-attribute f :foreground nil t)))))))
+
+(defun eda/grid--startup-render (&optional frame)
+  "Render the default grid once, in FRAME (or the selected frame).
+No-op on the daemon's frameless init and after the first successful render."
+  (let ((frame (or frame (selected-frame))))
+    (when (and eda/grid-render-on-startup
+               (not eda/grid--startup-done)
+               (not noninteractive)
+               (frame-live-p frame))
+      (setq eda/grid--startup-done t)
+      (with-selected-frame frame
+        (eda/grid--prewarm-faces)
+        (condition-case _ (eda/grid-refresh) (error nil))))))
+
+(if (daemonp)
+    ;; Fires after persp/pclock have loaded at daemon init, on the first client.
+    (add-hook 'server-after-make-frame-hook #'eda/grid--startup-render)
+  (add-hook 'emacs-startup-hook #'eda/grid--startup-render))
 
 ;; --- E13 · worktree-follows-focus for file finding -------------------------
 
