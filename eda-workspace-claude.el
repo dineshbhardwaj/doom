@@ -129,7 +129,7 @@ worktree/project dir).")
   "Mirror Claude CLI's project-dir flattening of CWD.
 `/Users/dinesh/eda/wt/foo' → `-Users-dinesh-eda-wt-foo'."
   (let ((abs (directory-file-name (file-truename (expand-file-name cwd)))))
-    (replace-regexp-in-string "/" "-" abs)))
+    (replace-regexp-in-string "[^A-Za-z0-9]" "-" abs)))
 
 (defun eda/ws-claude--project-dir (wt)
   "Return the ~/.claude/projects/<flattened> dir for worktree WT."
