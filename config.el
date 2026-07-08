@@ -264,34 +264,83 @@
 (setq projectile-project-search-path '("~/projects/" "~/code/" ("~/github" . 1)))
 
 (after! org
-  (setq template-format "* TODO %? %^g %^{SCHEDULED}p %^{DEADLINE}p \n")
-  (setq template-format-wo-sch "* TODO %? %^g \n")
   (add-to-list 'org-capture-templates
              '("i" "Important-Urgent" entry
                (file+headline "~/Dropbox/organist-dinesh/life.org" "IMPORTANT_URGENT")
-               "* TODO  %? %^g \n    %^{SCHEDULED}p %^{DEADLINE}p\n"
+               "* TODO %? %^g\nSCHEDULED: %^{Scheduled}t DEADLINE: %^{Deadline}t\n"
                :kill-buffer t))
   (add-to-list 'org-capture-templates
                '("u" "UnImportant-Urgent" entry
               (file+headline "~/Dropbox/organist-dinesh/life.org" "UNIMPORTANT_URGENT")
 
-               "* TODO  %? %^g \n    %^{SCHEDULED}p %^{DEADLINE}p\n"
+               "* TODO %? %^g\nSCHEDULED: %^{Scheduled}t DEADLINE: %^{Deadline}t\n"
                :kill-buffer t))
   (add-to-list 'org-capture-templates
                '("d" "Important-UnUrgent" entry
                (file+headline "~/Dropbox/organist-dinesh/life.org" "IMPORTANT_UNURGENT")
-               "* TODO  %? %^g \n    %^{SCHEDULED}p %^{DEADLINE}p\n"
+               "* TODO %? %^g\nSCHEDULED: %^{Scheduled}t DEADLINE: %^{Deadline}t\n"
                :kill-buffer t))
   (add-to-list 'org-capture-templates
                '("w" "UnImportant-Urgent" entry
                (file+headline "~/Dropbox/organist-dinesh/life.org" "UNIMPORTANT_UNURGENT")
-               "* TODO  %? %^g \n    %^{SCHEDULED}p %^{DEADLINE}p\n"
+               "* TODO %? %^g\nSCHEDULED: %^{Scheduled}t DEADLINE: %^{Deadline}t\n"
                :kill-buffer t))
   (add-to-list 'org-capture-templates
                '("x" "Raw" entry
                (file+headline "~/Dropbox/organist-dinesh/life.org" "UNIMPORTANT_UNURGENT")
-               "* TODO  %? \n    %^g\n"
+               "* TODO %? %^g\nSCHEDULED: %^{Scheduled}t DEADLINE: %^{Deadline}t\n"
                :kill-buffer t))
+
+  ;; Doom's built-in project-todo templates ("pt" project-local, "ot"
+  ;; centralized) ship without any date prompt. Rewrite them in place to prompt
+  ;; for real SCHEDULED/DEADLINE planning dates (a planning line right after the
+  ;; heading — not a property, so the agenda actually treats them as such).
+  (dolist (key '("pt" "ot"))
+    (when-let ((tmpl (assoc key org-capture-templates)))
+      (setf (nth 4 tmpl)
+            "* TODO %?\nSCHEDULED: %^{Scheduled}t DEADLINE: %^{Deadline}t\n%i\n%a")))
+
+  ;; --- Central project-task capture (choose project -> projects.org) --------
+  ;; All project tasks live in ONE central file under `org-directory' (which the
+  ;; agenda already scans), nested under a per-project heading. Always prompts
+  ;; for the project/worktree AND for SCHEDULED/DEADLINE, so a new task is picked
+  ;; up by the agenda immediately -- no scattered todo.org files per worktree.
+  (defvar my/org-capture-projects-file "projects.org"
+    "Central projects file (relative to `org-directory') for the `P' capture.")
+
+  (defun my/org--project-headings (file)
+    "Level-1 heading titles already present in FILE, for completion."
+    (when (file-readable-p file)
+      (with-temp-buffer
+        (insert-file-contents file)
+        (let (heads)
+          (goto-char (point-min))
+          (while (re-search-forward "^\\* +\\(.+?\\)[ \t]*$" nil t)
+            (push (match-string-no-properties 1) heads))
+          (nreverse heads)))))
+
+  (defun my/org-capture-project-todo-target ()
+    "Prompt for a project/worktree and locate the capture point under its
+heading in the central projects file, creating the heading if needed. The
+candidate list is every worktree under the EDA root plus any project heading
+that already exists in the file (free text also accepted)."
+    (let* ((file (expand-file-name my/org-capture-projects-file org-directory))
+           (choices (delete-dups
+                     (append (and (fboundp 'eda/task--worktree-dirs)
+                                  (ignore-errors (eda/task--worktree-dirs)))
+                             (my/org--project-headings file))))
+           (project (completing-read "Project/worktree: " choices nil nil)))
+      (set-buffer (org-capture-target-buffer file))
+      (org-capture-put-target-region-and-position)
+      (widen)
+      (goto-char (point-min))
+      (+org--capture-ensure-heading (list project))))
+
+  (add-to-list 'org-capture-templates
+               '("P" "Project task (choose project -> central projects.org)" entry
+                 (function my/org-capture-project-todo-target)
+                 "* TODO %? %^g\nSCHEDULED: %^{Scheduled}t DEADLINE: %^{Deadline}t\n"
+                 :prepend t))
 )
 
 ;; temp (use-package! org-super-agenda
