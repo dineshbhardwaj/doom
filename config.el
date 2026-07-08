@@ -413,6 +413,14 @@ that already exists in the file (free text also accepted)."
 ;; vterm — make sure the module compiles cleanly
 (use-package! vterm
   :defer t
+  ;; Compile the native module automatically on first load instead of
+  ;; prompting. In a headless daemon (the Linux faraday box) the compile
+  ;; prompt can't be answered, so `(require 'vterm)' fails, `:after vterm'
+  ;; below never fires, and claude-code silently keeps its `eat' default.
+  ;; Auto-compiling makes vterm actually load there. Needs cmake + a C
+  ;; compiler + libtool present on the box.
+  :init
+  (setq vterm-always-compile-module t)
   :config
   (setq vterm-max-scrollback 10000
         vterm-shell (or (executable-find "zsh") "/bin/bash")
@@ -476,6 +484,15 @@ that already exists in the file (free text also accepted)."
 ;; `vterm' backend handles the alternate-screen + rapid redraw cleanly.
 ;; After changing this, kill any existing *claude:*<eat> buffer and start
 ;; a fresh session with SPC k k — backend choice is buffer-creation-time.
+;; Force the vterm backend on EVERY platform. This is set at top level — NOT
+;; only inside the `:after vterm' block below — so the choice holds even if
+;; vterm hasn't loaded yet. Previously the backend was set only in `:config',
+;; so on any box where vterm failed to load (the Linux daemon, whose vterm
+;; module wasn't compiled) the `:config' never ran and claude-code silently
+;; kept its `eat' default. That's why the same config gave the Mac vterm and
+;; Linux eat. With vterm now auto-compiling (above) it loads on Linux too, and
+;; this top-level setq guarantees we never silently degrade to eat again.
+(setq claude-code-terminal-backend 'vterm)
 (use-package! claude-code
   :after vterm
   :config
