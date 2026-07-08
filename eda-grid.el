@@ -26,6 +26,9 @@
 (defvar eda/pclock-changed-hook)
 (defvar eda/ws-claudes)
 (declare-function eda/task--marker "eda-task-engine")
+(declare-function eda/task-worktree "eda-task-engine")
+(declare-function eda/task-session-id "eda-task-engine")
+(declare-function eda/ws-claude--start "eda-workspace-claude")
 
 ;; --- Layout decision (pure) ------------------------------------------------
 
@@ -72,13 +75,50 @@ how many Claude panes are available (= W-3), never silently more."
              eda/pclock-active)
     (mapcar #'car (sort items (lambda (a b) (time-less-p (cdr a) (cdr b)))))))
 
+(defvar eda/grid-resume-dead-sessions t
+  "When non-nil, a still-clocked task whose Claude buffer is gone is resumed
+in place as the grid builds, instead of leaving the pane on an empty *scratch*.
+This is the common case after an Emacs/daemon restart (which empties the
+in-memory `eda/ws-claudes') or after the session was killed while the task
+stayed clocked — e.g. a REVIEW task you switch back to.  Bounded to CLOCKED
+tasks only, so glancing at a workspace whose task is not clocked spawns
+nothing; set to nil to restore the old scratch-fallback behaviour.")
+
+(defun eda/grid--resume-task (pl ws role)
+  "Resume the Claude session described by pclock plist PL for (WS, ROLE).
+Uses the marker stored at clock-in to read the task's worktree + session id,
+then resumes via `eda/ws-claude--start' (which `--resume's an existing
+transcript or creates the id fresh).  The spawn's `pop-to-buffer' is contained
+in a `save-window-excursion' so it does not disturb the grid relayout — the
+caller places the registered buffer into its pane afterwards.  Best-effort."
+  (when (and pl role (fboundp 'eda/ws-claude--start))
+    (with-demoted-errors "eda/grid resume: %S"
+      (let* ((marker (plist-get pl :marker))
+             (wt  (and marker (ignore-errors (eda/task-worktree marker))))
+             (sid (and marker (ignore-errors (eda/task-session-id marker)))))
+        (when (and wt (file-directory-p wt))
+          (save-window-excursion
+            (eda/ws-claude--start ws role sid)))))))
+
 (defun eda/grid--task-buffer (id)
-  "Live Claude buffer for clocked task ID, or nil."
+  "Live Claude buffer for clocked task ID, or nil.
+When the task is still clocked but has no live buffer (the session was killed
+or lost to a restart) and `eda/grid-resume-dead-sessions' is non-nil, resume it
+in place rather than returning nil (which would leave the pane on *scratch*)."
   (let* ((pl (gethash id eda/pclock-active))
-         (ws (plist-get pl :ws)) (role (plist-get pl :role))
+         (ws (plist-get pl :ws))
+         (role (or (plist-get pl :role) 'architect))
          (entries (and ws (boundp 'eda/ws-claudes) (gethash ws eda/ws-claudes)))
          (buf (and role (cdr (assq role entries)))))
-    (and (buffer-live-p buf) buf)))
+    (cond
+     ((buffer-live-p buf) buf)
+     ((and eda/grid-resume-dead-sessions ws pl)
+      (eda/grid--resume-task pl ws role)
+      ;; `eda/ws-claude--start' registered the (now-live) buffer; re-read it.
+      (let* ((e2 (and ws (gethash ws eda/ws-claudes)))
+             (b2 (and role (cdr (assq role e2)))))
+        (and (buffer-live-p b2) b2)))
+     (t nil))))
 
 (defun eda/grid--agenda-buffer ()
   "Return an org agenda buffer to occupy slot 0 (best-effort)."

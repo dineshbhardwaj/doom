@@ -271,28 +271,51 @@ Idempotent: a prior `Review ▶' entry satisfies the check without re-asking."
 
 (defun eda/done-gate--check-memory (marker)
   "Require a memory entry keyed by :TASK_SLUG: in the :MEM_SCOPE: store (E8).
-When satisfied, register it in the store INDEX and pass. On a miss, offer to
-distill the lesson with Claude (else drop a stub), queue the entry to open,
-and fail — so the memory is always reviewed by a human before DONE."
+Behaviour (loud-fail + auto-pass):
+ - Entry already non-trivial (a human wrote it, or a prior distill did) → pass,
+   registering it in the store INDEX.
+ - No entry file yet, Claude available, and the offer accepted → distill, then
+   RE-CHECK: if the distill produced a real lesson, pass in the SAME run; if it
+   failed (nil → trivial stub), drop the stub, queue it to open, and fail with
+   an explicit \"distill failed — write it yourself\" message.
+ - Otherwise (a stub already exists from a prior failed attempt, Claude is
+   unavailable, or the offer is declined) → ensure a fill-in stub, queue it to
+   open, and fail telling the human to write the lesson.
+The `not (file-exists-p file)' guard on the distill offer is what breaks the old
+silent `y → distill fails → stub → revert' loop: once a stub exists we stop
+re-offering the failing distill and route straight to the manual path."
   (let* ((scope (eda/mem-normalize-scope (eda/task-prop marker "MEM_SCOPE" t)))
          (slug  (or (eda/task-prop marker "TASK_SLUG" t)
                     (user-error "Task has no :TASK_SLUG: — run `eda/task-init' first")))
          (title (org-with-point-at marker (org-get-heading t t t t)))
          (file  (eda/mem-entry-file scope slug)))
-    (if (eda/mem-entry-nontrivial-p file)
-        (progn
-          (eda/mem-index-add scope slug title)
-          (cons t (format "present (%s)" (abbreviate-file-name file))))
-      (if (and (eda/portable-claude-available-p)
-               (y-or-n-p "No memory entry yet — draft the lesson with Claude now? "))
+    (cond
+     ;; Present + reviewed → the happy path.
+     ((eda/mem-entry-nontrivial-p file)
+      (eda/mem-index-add scope slug title)
+      (cons t (format "present (%s)" (abbreviate-file-name file))))
+     ;; First attempt (no file yet) + Claude offered → try to distill.
+     ((and (not (file-exists-p file))
+           (eda/portable-claude-available-p)
+           (y-or-n-p "No memory entry yet — draft the lesson with Claude now? "))
+      (message "DONE-gate: distilling the task's lesson…")
+      (eda/mem-distill-for-task marker nil)
+      (if (eda/mem-entry-nontrivial-p file)
+          ;; Distill produced a real lesson → auto-pass this same run.
           (progn
-            (message "DONE-gate: distilling the task's lesson…")
-            (eda/mem-distill-for-task marker nil))
-        (unless (file-exists-p file)
-          (eda/mem-entry-stub scope slug title)))
+            (eda/mem-index-add scope slug title)
+            (cons t (format "distilled (%s)" (abbreviate-file-name file))))
+        ;; Distill failed → fail LOUDLY (no silent stub-loop).
+        (unless (file-exists-p file) (eda/mem-entry-stub scope slug title))
+        (setq eda/done-gate--open-after file)
+        (cons nil (format "Claude distill failed — write the lesson yourself in %s, then re-mark DONE"
+                          (abbreviate-file-name file)))))
+     ;; Stub already exists / Claude unavailable / offer declined → manual path.
+     (t
+      (unless (file-exists-p file) (eda/mem-entry-stub scope slug title))
       (setq eda/done-gate--open-after file)
-      (cons nil (format "review/complete the memory entry: %s"
-                        (abbreviate-file-name file))))))
+      (cons nil (format "write the lesson in %s, then re-mark DONE"
+                        (abbreviate-file-name file)))))))
 
 ;; --- The gate + finalizer ---------------------------------------------------
 
