@@ -54,6 +54,11 @@
 (package! elfeed-summary)
 ;; ───── Claude integration ─────
 (package! claude-code
+  ;; Pin to a known-good commit: the config depends on the private
+  ;; `claude-code--start' (see eda-workspace-claude.el). Newer upstream commits
+  ;; renamed/removed it, which made `SPC k o s' void on machines that pulled a
+  ;; fresher copy. Pinning keeps every machine on the same working version.
+  :pin "e2d29b05a97fdded88ba7ca0586a5483ca2e3dcb"
   :recipe (:host github :repo "stevemolitor/claude-code.el"))
 
 ;; ───── GitHub integration (Forge extends Magit) ─────
