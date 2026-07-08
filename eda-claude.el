@@ -91,9 +91,14 @@
 
 (defun eda/--ensure-claude ()
   "Start a claude-code session if none exists."
-  (unless (and (fboundp 'claude-code--get-buffer-name)
-               (claude-code--get-buffer-name))
-    (when (fboundp 'claude-code) (claude-code))))
+  ;; claude-code is deferred (`:after vterm'); `claude-code--get-buffer-name' is
+  ;; private and not autoloaded, so force-load the library before probing it.
+  ;; Otherwise on a fresh Emacs (e.g. the Linux daemon) the buffer probe would
+  ;; be void and this would spuriously start a second session. See the same
+  ;; fix in `eda/ws-claude--spawn'.
+  (require 'claude-code)
+  (unless (claude-code--get-buffer-name)
+    (claude-code)))
 
 ;;;###autoload
 (defun eda/claude-agent-review-buffer ()
