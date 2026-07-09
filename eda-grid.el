@@ -2,12 +2,15 @@
 ;;;
 ;;; Phase 11 · Layer 5 — window grid + buffer ergonomics (E5/E13/E14/E15/E16).
 ;;;
-;;; The default working layout is fixed at the front: slot 0 = the org (weekly)
-;;; agenda, slot 1 = elfeed search (the one-line entry list), slot 2 = the
-;;; elfeed article (the `*elfeed-entry*' show buffer); slots 3..n = one Claude
-;;; pane per CLOCKED task, in clock order. The grid shape is chosen by how many
-;;; tasks are clocked and re-rendered automatically on every clock in/out (via
-;;; `eda/pclock-changed-hook'):
+;;; The default working layout puts the org (weekly) agenda in slot 0. When
+;;; `eda/grid-show-elfeed' is on (the default) slot 1 = elfeed search (the
+;;; one-line entry list) and slot 2 = the elfeed article (`*elfeed-entry*');
+;;; Claude panes then start at slot 3 and cap at 5. Toggle elfeed OUT of the
+;;; grid with `SPC k o e' (`eda/grid-toggle-elfeed') to free those two slots —
+;;; Claude panes then start at slot 1 and cap at 7, for more parallel sessions.
+;;; The grid shape is chosen from the front-slot count plus how many tasks are
+;;; clocked, and re-rendered automatically on every clock in/out and on toggle
+;;; (via `eda/pclock-changed-hook'). E.g. with elfeed on:
 ;;;
 ;;;   0 clocked → agenda+search+article (1×3)   1 → 2×2
 ;;;   2–3 → 2×3                                  4+ → 2×4  (caps at 8 windows)
@@ -15,6 +18,7 @@
 ;;;   C-x 1  zoom the current pane (suspends auto-relayout)
 ;;;   C-x 0  restore the grid        M-o  jump to a window (ace-window)
 ;;;   s-1..s-9  jump to window N (winum)
+;;;   SPC k o e  toggle elfeed in/out of the grid (reflows the layout)
 ;;;
 ;;; Also: opening a file (SPC p f) resolves inside the FOCUSED pane's worktree
 ;;; (E13), and file buffers under a worktree are named "<file> · <task>" (E14).
@@ -32,16 +36,49 @@
 
 ;; --- Layout decision (pure) ------------------------------------------------
 
-(defun eda/grid-layout-for-count (n)
-  "Return plist (:windows W :rows R :cols C :shown S) for N clocked tasks.
-Window 0 holds the agenda, window 1 the elfeed list, window 2 the elfeed
-article; the remaining W-3 hold Claude sessions. Caps at 8 windows; SHOWN is
-how many Claude panes are available (= W-3), never silently more."
+(defvar eda/grid-show-elfeed t
+  "When non-nil, the grid reserves two front slots (after the agenda in slot 0)
+for the elfeed search list and article, so Claude panes start at slot 3 and
+cap at 5.  When nil, elfeed is dropped from the grid and Claude panes start
+right after the agenda (slot 1), giving up to 7 panes for parallel sessions.
+Toggle live with `eda/grid-toggle-elfeed' (\\[eda/grid-toggle-elfeed], `SPC k o e');
+set this here (or in per-machine config) to change the startup default.")
+
+(defun eda/grid--front-slots ()
+  "Number of fixed non-Claude slots at the front of the grid.
+Slot 0 is always the agenda; when `eda/grid-show-elfeed' is non-nil slots 1
+and 2 additionally hold the elfeed search list and article."
+  (if eda/grid-show-elfeed 3 1))
+
+(defun eda/grid--shape-for (total)
+  "Return (ROWS COLS WINDOWS) for the tightest tidy grid holding TOTAL panes.
+WINDOWS (= ROWS*COLS) may exceed TOTAL when TOTAL isn't a clean grid size;
+the caller fills the leftover panes with *scratch*.  Caps at 8 windows."
   (cond
-   ((<= n 0) (list :windows 3 :rows 1 :cols 3 :shown 0))
-   ((<= n 1) (list :windows 4 :rows 2 :cols 2 :shown 1))
-   ((<= n 3) (list :windows 6 :rows 2 :cols 3 :shown 3))
-   (t        (list :windows 8 :rows 2 :cols 4 :shown 5))))
+   ((<= total 1) '(1 1 1))
+   ((<= total 2) '(1 2 2))
+   ((<= total 3) '(1 3 3))
+   ((<= total 4) '(2 2 4))
+   ((<= total 6) '(2 3 6))
+   (t            '(2 4 8))))
+
+(defun eda/grid-layout-for-count (n)
+  "Return plist (:windows W :rows R :cols C :shown S :front F) for N clocked tasks.
+Slot 0 holds the agenda; when `eda/grid-show-elfeed' is non-nil slots 1-2 hold
+the elfeed list + article (F=3), otherwise elfeed is omitted (F=1).  The
+remaining slots hold Claude sessions, in clock order.  Caps at 8 windows; SHOWN
+Claude panes = min(N, 8-F) — 5 with elfeed on, 7 with it off — never silently
+more.  The grid shape adapts to F+SHOWN so dropping elfeed reflows the grid."
+  (let* ((front      (eda/grid--front-slots))
+         (max-claude (- 8 front))
+         (shown      (max 0 (min n max-claude)))
+         (total      (+ front shown))
+         (shape      (eda/grid--shape-for total)))
+    (list :windows (nth 2 shape)
+          :rows    (nth 0 shape)
+          :cols    (nth 1 shape)
+          :shown   shown
+          :front   front)))
 
 ;; --- Window builder --------------------------------------------------------
 
@@ -169,34 +206,37 @@ article has been opened from the list; falls back to *scratch* until then."
   (let* ((order (eda/grid--clock-order))
          (n     (length order))
          (spec  (eda/grid-layout-for-count n))
-         (shown (plist-get spec :shown)))
+         (shown (plist-get spec :shown))
+         (front (plist-get spec :front)))
     (condition-case err
         (let ((wins (eda/grid--build (plist-get spec :rows)
                                      (plist-get spec :cols))))
-          ;; Fixed front slots: 0 = agenda, 1 = elfeed list, 2 = elfeed article.
-          ;; Each slot is isolated: a buffer that misbehaves (e.g. a transient
-          ;; gnus face-inheritance cycle when elfeed first loads) leaves that one
-          ;; pane on *scratch* rather than aborting the whole layout into the
-          ;; single-window fallback below.
+          ;; Fixed front slots: 0 = agenda; when `eda/grid-show-elfeed', 1 =
+          ;; elfeed list, 2 = elfeed article. Each slot is isolated: a buffer
+          ;; that misbehaves (e.g. a transient gnus face-inheritance cycle when
+          ;; elfeed first loads) leaves that one pane on *scratch* rather than
+          ;; aborting the whole layout into the single-window fallback below.
           (with-demoted-errors "eda/grid agenda slot: %S"
             (set-window-buffer (nth 0 wins) (eda/grid--agenda-buffer)))
-          (when (nth 1 wins)
-            (with-demoted-errors "eda/grid elfeed slot: %S"
-              (set-window-buffer (nth 1 wins) (eda/grid--elfeed-buffer))))
-          (when (nth 2 wins)
-            (with-demoted-errors "eda/grid article slot: %S"
-              (set-window-buffer (nth 2 wins) (eda/grid--elfeed-entry-buffer))))
-          ;; Claude panes start at slot 3, in clock order.
+          (when eda/grid-show-elfeed
+            (when (nth 1 wins)
+              (with-demoted-errors "eda/grid elfeed slot: %S"
+                (set-window-buffer (nth 1 wins) (eda/grid--elfeed-buffer))))
+            (when (nth 2 wins)
+              (with-demoted-errors "eda/grid article slot: %S"
+                (set-window-buffer (nth 2 wins) (eda/grid--elfeed-entry-buffer)))))
+          ;; Claude panes start at slot FRONT (3 with elfeed, 1 without), in
+          ;; clock order.
           (cl-loop for i from 0 below (min shown n)
                    for id in order
-                   for w = (nth (+ 3 i) wins)
+                   for w = (nth (+ front i) wins)
                    when w do
                    (let ((buf (eda/grid--task-buffer id)))
                      (when buf
                        (set-window-buffer w buf)
                        (set-window-dedicated-p w t))))
           ;; leftover panes → scratch (so an off-breakpoint count looks clean)
-          (cl-loop for i from (+ 3 (min shown n)) below (length wins)
+          (cl-loop for i from (+ front (min shown n)) below (length wins)
                    for w = (nth i wins)
                    when w do (set-window-buffer w (get-buffer-create "*scratch*")))
           (when (> n shown)
@@ -219,6 +259,20 @@ article has been opened from the list; falls back to *scratch* until then."
   (interactive)
   (setq eda/grid--suspended t)
   (delete-other-windows))
+
+;;;###autoload
+(defun eda/grid-toggle-elfeed ()
+  "Toggle whether elfeed occupies grid slots, then relayout.
+With elfeed on, slots 1-2 are the elfeed list + article and Claude caps at 5
+panes; with it off those slots are freed and Claude gets up to 7 panes for
+more parallel sessions.  The grid shape reflows to match.  Bound to `SPC k o e'."
+  (interactive)
+  (setq eda/grid-show-elfeed (not eda/grid-show-elfeed))
+  (setq eda/grid--suspended nil)
+  (eda/grid-refresh)
+  (message "eda/grid: elfeed %s the grid (Claude panes cap at %d)"
+           (if eda/grid-show-elfeed "IN" "OUT of")
+           (- 8 (eda/grid--front-slots))))
 
 (defun eda/grid--maybe-refresh ()
   "Auto-relayout unless disabled or zoom-suspended."
@@ -342,7 +396,8 @@ No-op on the daemon's frameless init and after the first successful render."
 
 (map! :leader
       (:prefix-map ("k o" . "org task engine")
-       :desc "Refresh / restore grid" "g" #'eda/grid-refresh))
+       :desc "Refresh / restore grid" "g" #'eda/grid-refresh
+       :desc "Toggle elfeed in grid"  "e" #'eda/grid-toggle-elfeed))
 
 ;; Single-key clock from the agenda (overrides the native single-clock I/O —
 ;; we don't use org's one live clock; the parallel engine handles timing).
