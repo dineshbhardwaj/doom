@@ -494,6 +494,14 @@
           </div>
         </div>
         <div class="tl">
+          <div class="when">🌳 Worktree mode</div>
+          <div class="body">
+            <h4>Spin up task dirs the cheap way</h4>
+            <p>Prefer a <b>git worktree</b> over a full <code>git clone</code> for each task dir. Both give an isolated dir under <code>~/eda/wt/&lt;slug&gt;/</code> with its own branch, index/HEAD, and <code>SPC p f</code> scope — but a worktree shares the one repo's <code>.git</code> object store, so it's near-instant, costs almost no disk, and one <code>fetch</code> reaches every worktree. A clone re-copies the whole history each time.</p>
+            <p>Create via <code>SPC k o i</code> / <code>SPC k o w</code> → pick <b>git worktree</b>, then repo + branch. <b>One task = one branch</b> (a branch checks out in only one worktree at a time). Parallel tasks stay isolated — a separate index per worktree means concurrent commits never touch each other. Clean up a finished task with <code>git worktree remove ~/eda/wt/&lt;slug&gt;</code> then <code>git worktree prune</code> — don't <code>rm</code> the dir by hand. And don't move or delete the hub clone, or the linked worktrees break.</p>
+          </div>
+        </div>
+        <div class="tl">
           <div class="when">⇄ Parallel</div>
           <div class="body">
             <h4>Work several tasks at once</h4>
