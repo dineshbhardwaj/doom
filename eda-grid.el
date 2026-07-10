@@ -31,8 +31,11 @@
 (defvar eda/ws-claudes)
 (declare-function eda/task--marker "eda-task-engine")
 (declare-function eda/task-worktree "eda-task-engine")
+(declare-function eda/task-workspace "eda-task-engine")
+(declare-function eda/task-set-prop "eda-task-engine")
 (declare-function eda/task-session-id "eda-task-engine")
 (declare-function eda/ws-claude--start "eda-workspace-claude")
+(declare-function eda/pclock--save "eda-pclock")
 
 ;; --- Layout decision (pure) ------------------------------------------------
 
@@ -210,7 +213,15 @@ article has been opened from the list; falls back to *scratch* until then."
          (front (plist-get spec :front)))
     (condition-case err
         (let ((wins (eda/grid--build (plist-get spec :rows)
-                                     (plist-get spec :cols))))
+                                     (plist-get spec :cols)))
+              (missing '()))
+          ;; Undedicate every pane first: `eda/grid--build' reuses the selected
+          ;; window for slot 0, and after a `C-x 1' zoom that window may be
+          ;; DEDICATED to a Claude buffer — `set-window-buffer' refuses to
+          ;; switch a dedicated window, which used to abort the agenda slot (and
+          ;; strand the grid).  Clearing dedication up front makes every slot
+          ;; writable; the Claude loop re-dedicates its panes below.
+          (dolist (w wins) (when (window-live-p w) (set-window-dedicated-p w nil)))
           ;; Fixed front slots: 0 = agenda; when `eda/grid-show-elfeed', 1 =
           ;; elfeed list, 2 = elfeed article. Each slot is isolated: a buffer
           ;; that misbehaves (e.g. a transient gnus face-inheritance cycle when
@@ -226,21 +237,32 @@ article has been opened from the list; falls back to *scratch* until then."
               (with-demoted-errors "eda/grid article slot: %S"
                 (set-window-buffer (nth 2 wins) (eda/grid--elfeed-entry-buffer)))))
           ;; Claude panes start at slot FRONT (3 with elfeed, 1 without), in
-          ;; clock order.
+          ;; clock order.  A task with no live/resumable session (its :WORKTREE:
+          ;; is unset so the workspace mis-resolved, or the worktree is gone)
+          ;; gets a CLEAN *scratch* pane — never a stale duplicate of whatever
+          ;; buffer the split inherited — and is collected so we can point the
+          ;; user at `SPC k o W' (`eda/task-set-worktree') to fix its workdir.
           (cl-loop for i from 0 below (min shown n)
                    for id in order
                    for w = (nth (+ front i) wins)
                    when w do
                    (let ((buf (eda/grid--task-buffer id)))
-                     (when buf
-                       (set-window-buffer w buf)
-                       (set-window-dedicated-p w t))))
+                     (if buf
+                         (progn (set-window-buffer w buf)
+                                (set-window-dedicated-p w t))
+                       (set-window-buffer w (get-buffer-create "*scratch*"))
+                       (push (or (plist-get (gethash id eda/pclock-active) :title) id)
+                             missing))))
           ;; leftover panes → scratch (so an off-breakpoint count looks clean)
           (cl-loop for i from (+ front (min shown n)) below (length wins)
                    for w = (nth i wins)
                    when w do (set-window-buffer w (get-buffer-create "*scratch*")))
           (when (> n shown)
             (message "eda/grid: %d clocked, showing %d (cap); rest hidden." n shown))
+          (when missing
+            (message "eda/grid: no session for %s — set the workdir with SPC k o W"
+                     (mapconcat (lambda (s) (format "\"%s\"" s))
+                                (nreverse missing) ", ")))
           (select-window (nth 0 wins)))
       (error
        (delete-other-windows)
@@ -273,6 +295,107 @@ more parallel sessions.  The grid shape reflows to match.  Bound to `SPC k o e'.
   (message "eda/grid: elfeed %s the grid (Claude panes cap at %d)"
            (if eda/grid-show-elfeed "IN" "OUT of")
            (- 8 (eda/grid--front-slots))))
+
+;; --- Workdir repair (SPC k o W) --------------------------------------------
+;;
+;; A task's workspace is the basename of `eda/task-worktree', which falls back
+;; to the org FILE's own directory when the entry has no :WORKTREE:/:TASK_SLUG:
+;; (see `eda-task-engine').  A task clocked in before those properties were
+;; stamped therefore snapshots a wrong :ws into `eda/pclock-active' (e.g. the
+;; org folder "organist-dinesh" instead of the real worktree), and the grid can
+;; neither find its live session nor resume it.  Two remedies live here: a
+;; batch re-derive for clocks whose org entry has SINCE been fixed, and an
+;; interactive setter to supply the workdir by hand.
+
+;;;###autoload
+(defun eda/pclock-resync-workspaces ()
+  "Repair active clocks whose :ws points at a NON-EXISTENT worktree.
+Only touches a clock whose current workspace directory is missing (the classic
+symptom of a clock snapshotted before its :WORKTREE:/:TASK_SLUG: was stamped,
+so :ws mis-resolved to the org file's own folder).  For those, it re-derives
+:ws from the org entry and adopts it only when the derived worktree actually
+exists.  A clock whose :ws already names an existing directory is LEFT ALONE —
+re-derivation is not trusted to \"improve\" a working value, because org
+:WORKTREE: props can themselves be stale/inherited and would clobber it.  Use
+`eda/task-set-worktree' (`SPC k o W') to correct those by hand.  Re-saves the
+pclock state, rebuilds the grid, and returns the number of clocks changed."
+  (interactive)
+  (let ((changed 0))
+    (maphash
+     (lambda (_id pl)
+       (let* ((marker (plist-get pl :marker))
+              (cur-ws (plist-get pl :ws))
+              (cur-wt (and cur-ws (expand-file-name cur-ws eda/portable-worktree-root)))
+              (cur-ok (and cur-wt (file-directory-p cur-wt)))
+              (new-ws (and marker (ignore-errors (eda/task-workspace marker))))
+              (new-wt (and marker (ignore-errors (eda/task-worktree marker)))))
+         (when (and (not cur-ok)          ; only repair a BROKEN workspace
+                    new-ws new-wt (file-directory-p new-wt)
+                    (not (equal new-ws cur-ws)))
+           (plist-put pl :ws new-ws)
+           (cl-incf changed))))
+     eda/pclock-active)
+    (when (> changed 0)
+      (ignore-errors (eda/pclock--save))
+      (when (fboundp 'eda/grid-refresh) (ignore-errors (eda/grid-refresh))))
+    (message "eda/pclock: resynced %d workspace%s" changed (if (= changed 1) "" "s"))
+    changed))
+
+(defun eda/grid--pick-clocked-marker (prompt)
+  "Pick a clocked task's marker via `completing-read' over titles."
+  (let (cands)
+    (maphash (lambda (id pl)
+               (push (cons (format "%s  [%s]"
+                                   (or (plist-get pl :title) id)
+                                   (or (plist-get pl :ws) "?"))
+                           (plist-get pl :marker))
+                     cands))
+             eda/pclock-active)
+    (if (null cands)
+        (user-error "No clocked tasks to set a worktree for")
+      (cdr (assoc (completing-read prompt cands nil t) cands)))))
+
+;;;###autoload
+(defun eda/task-set-worktree (&optional dir)
+  "Set the worktree DIR for a task, then repair its clock and rebuild the grid.
+The task is the one at point in an org/agenda buffer, else one you pick from
+the currently-clocked tasks.  DIR is read interactively (defaulting to a guess
+under `eda/portable-worktree-root').  Writes :WORKTREE: and :TASK_SLUG: on the
+org entry (relative to the worktree root when DIR lives under it, else the
+absolute path), saves the org file, updates the live clock's :ws when the task
+is clocked, and refreshes the grid.  Bound to `SPC k o W' — the manual escape
+hatch when the grid reports \"no session for …\" because a task never got a
+proper :WORKTREE:."
+  (interactive)
+  (let* ((marker (if (derived-mode-p 'org-mode 'org-agenda-mode)
+                     (eda/task--marker)
+                   (eda/grid--pick-clocked-marker "Set worktree for task: ")))
+         (id     (org-with-point-at marker (org-id-get-create)))
+         (root   (file-name-as-directory
+                  (expand-file-name eda/portable-worktree-root)))
+         (guess  (or (ignore-errors (eda/task-worktree marker)) root))
+         (dir    (file-name-as-directory
+                  (expand-file-name
+                   (or dir (read-directory-name "Task worktree: " guess nil nil)))))
+         (under? (string-prefix-p root dir))
+         (slug   (file-name-nondirectory (directory-file-name dir)))
+         (stored (if under? slug dir)))
+    (unless (file-directory-p dir)
+      (unless (y-or-n-p (format "%s does not exist yet — set it anyway? " dir))
+        (user-error "Aborted")))
+    (eda/task-set-prop marker "WORKTREE" stored)
+    (eda/task-set-prop marker "TASK_SLUG" slug)
+    ;; Persist the org buffer so the property survives a restart.
+    (when (buffer-live-p (marker-buffer marker))
+      (with-current-buffer (marker-buffer marker)
+        (when buffer-file-name (save-buffer))))
+    ;; Repair the live clock snapshot, if this task is clocked.
+    (let ((pl (gethash id eda/pclock-active)))
+      (when pl
+        (plist-put pl :ws slug)
+        (ignore-errors (eda/pclock--save))))
+    (when (fboundp 'eda/grid-refresh) (ignore-errors (eda/grid-refresh)))
+    (message "eda/task: worktree = %s" dir)))
 
 (defun eda/grid--maybe-refresh ()
   "Auto-relayout unless disabled or zoom-suspended."
@@ -397,7 +520,9 @@ No-op on the daemon's frameless init and after the first successful render."
 (map! :leader
       (:prefix-map ("k o" . "org task engine")
        :desc "Refresh / restore grid" "g" #'eda/grid-refresh
-       :desc "Toggle elfeed in grid"  "e" #'eda/grid-toggle-elfeed))
+       :desc "Toggle elfeed in grid"  "e" #'eda/grid-toggle-elfeed
+       :desc "Set task worktree"      "W" #'eda/task-set-worktree
+       :desc "Resync clock workspaces" "R" #'eda/pclock-resync-workspaces))
 
 ;; Single-key clock from the agenda (overrides the native single-clock I/O —
 ;; we don't use org's one live clock; the parallel engine handles timing).
