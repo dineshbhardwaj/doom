@@ -137,6 +137,30 @@ full titles. Tune with `eda/pclock-mode-line-words` and
 > session up; **clock-in** does that *and* starts counting your time. For real
 > work, clock in — that's what feeds the report.
 
+### 🌳 Worktree mode — spin up task dirs the cheap way
+
+Prefer a **git worktree** over a full `git clone` for each task dir. Both give
+you an isolated directory under `~/eda/wt/<slug>/` with its own branch, its own
+index/HEAD, and its own `SPC p f` scope — but a worktree **shares the one repo's
+`.git` object store**, so it's near-instant to create, costs almost no disk, and
+one `fetch` reaches every worktree. A clone re-copies the whole history each
+time. Same isolation and independent commits, without the clone tax.
+
+- **Create one:** `SPC k o i` (init) or `SPC k o w` — when the dir doesn't
+  exist, pick **git worktree**, then the repo + branch (existing branch is
+  checked out; a new name is cut off your base ref). One task = one branch.
+- **Golden rule:** a branch can live in only **one** worktree at a time (git
+  refuses a second checkout of the same branch) — so give each task its own
+  branch.
+- **Parallel work is safe:** each worktree has a separate working tree + index,
+  so two tasks editing/committing at once never touch each other's staging area
+  (this is exactly why we didn't cram multiple Claudes into one shared dir).
+- **Clean up** when a task is truly done: `git worktree remove ~/eda/wt/<slug>`
+  (then `git worktree prune` to drop stale entries). Removing the dir by hand
+  leaves a dangling registration — use `remove`.
+- **Gotcha:** the worktrees are linked to the hub repo — don't move/delete the
+  hub clone or they all break.
+
 ### 🔀 Work several tasks in parallel
 - Clock in a second (third…) heading with **`SPC k o c`**. Overlapping clocks
   are allowed — **each task earns its full time**. The grid relayouts
