@@ -238,10 +238,26 @@ No-op (with a message) if that entry is already clocked in."
         (message "Not clocked in.")
       (when (and eda/pclock-kill-session-on-out
                  (not (plist-get pl :idle))
-                 (plist-get pl :ws) (plist-get pl :role)
                  (fboundp 'eda/task-stop-session))
-        (ignore-errors
-          (eda/task-stop-session (plist-get pl :ws) (plist-get pl :role))))
+        ;; Locate the session as forgivingly as the grid's read path does, so a
+        ;; clock-out reliably CLOSES the Claude buffer (it stays resumable — the
+        ;; graceful exit flushes the transcript and the stamped session id lets
+        ;; the next clock-in `--resume').  Two snapshot hazards used to make the
+        ;; kill silently no-op, leaving the buffer open:
+        ;;   * :role nil (no :CLAUDE_ROLE:) — default to `architect', matching
+        ;;     `eda/grid--task-buffer', so the guard no longer blocks the kill.
+        ;;   * :ws mis-resolved (task clocked before its :WORKTREE:/:TASK_SLUG:
+        ;;     were stamped, so it snapshotted the org file's own folder) — the
+        ;;     buffer is registered under the REAL worktree, not that snapshot,
+        ;;     so re-derive the workspace from the marker and retry when the
+        ;;     recorded :ws has no live session.
+        (let* ((role (or (plist-get pl :role) 'architect))
+               (ws1  (plist-get pl :ws))
+               (m    (plist-get pl :marker))
+               (ws2  (and m (ignore-errors (eda/task-workspace m)))))
+          (unless (ignore-errors (eda/task-stop-session ws1 role))
+            (when (and ws2 (not (equal ws2 ws1)))
+              (ignore-errors (eda/task-stop-session ws2 role))))))
       (eda/pclock--save)
       (eda/pclock--update-modeline)
       (run-hooks 'eda/pclock-changed-hook)
