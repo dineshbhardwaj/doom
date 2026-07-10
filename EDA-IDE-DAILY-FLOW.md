@@ -58,28 +58,36 @@ heading).
 
 ## 3. Your screen — the grid
 
-The window grid is fixed at the front and auto-rebuilds on every clock in/out:
+The window grid auto-rebuilds on every clock in/out. The front slots are fixed;
+**elfeed is optional** and can be toggled out to make room for more Claude panes:
 
-| Slot | Contents |
-|------|----------|
-| 0 | Org **weekly agenda** |
-| 1 | **elfeed** search list |
-| 2 | **elfeed** article |
-| 3+ | one **Claude pane per clocked task**, in clock order |
+| Slot | Contents (elfeed **on**, default) | Contents (elfeed **off**) |
+|------|-----------------------------------|---------------------------|
+| 0 | Org **weekly agenda** | Org **weekly agenda** |
+| 1 | **elfeed** search list | first **Claude pane** |
+| 2 | **elfeed** article | Claude pane |
+| 3+ | one **Claude pane per clocked task**, in clock order | Claude panes … |
 
-Layout scales with how many tasks are clocked: 0→1×3, 1→2×2, 2–3→2×3, 4+→2×4
-(caps at 8 panes).
+- **elfeed on** (default): 3 front slots → Claude panes cap at **5**.
+- **elfeed off** (`SPC k o e`): 1 front slot → Claude panes cap at **7**, for
+  more parallel sessions. The grid **reflows automatically** to the new count.
+
+Layout scales with front-slots + clocked tasks, capped at 8 windows. With elfeed
+on: 0→1×3, 1→2×2, 2–3→2×3, 4+→2×4.
 
 | Key | Action |
 |-----|--------|
 | `SPC k o g` | Rebuild / restore the grid on demand |
+| `SPC k o e` | **Toggle elfeed in/out of the grid** (reflows; 5↔7 Claude panes) |
 | `C-x 1` | Zoom current pane (suspends auto-relayout) |
 | `C-x 0` | Restore the grid |
 | `M-o` | Jump to a window (ace-window) |
 | `s-1` … `s-9` | Jump straight to window N (winum) |
 
 > The grid also renders itself automatically on the first frame of a fresh
-> Emacs. If it ever looks collapsed, `SPC k o g` rebuilds it.
+> Emacs. If it ever looks collapsed, `SPC k o g` rebuilds it. A `C-x 1` zoom no
+> longer strands the grid — the next clock in/out (or `SPC k o g`) rebuilds it
+> cleanly even though the zoomed pane was dedicated to a Claude buffer.
 
 **Mode line — what's clocked.** The mode line names your clocked tasks, so you
 always know what's running without opening the agenda:
@@ -111,7 +119,11 @@ full titles. Tune with `eda/pclock-mode-line-words` and
    If the worktree directory doesn't exist yet, init **offers to create it** —
    as a proper **git worktree** (pick a repo + branch; an existing branch is
    checked out, otherwise a new one is cut off your base ref) or a **plain
-   directory**. You can also do it any time on a task with **`SPC k o w`**.
+   directory**. You can also do it any time on a task with **`SPC k o w`**. If a
+   task ends up pointing at the *wrong* workdir (e.g. it was clocked before the
+   properties were stamped, so the grid can't find/resume its session), repair it
+   with **`SPC k o W`** (`eda/task-set-worktree`) — it rewrites `:WORKTREE:` /
+   `:TASK_SLUG:`, fixes the live clock's workspace, and relayouts.
 2. Mark it **`STRT`** → Claude **auto-starts** for the task. (Or start it
    explicitly without changing state: **`SPC k o s`**.)
 3. **Clock in for effort tracking:** **`SPC k o c`** — starts the effort timer,
@@ -185,6 +197,9 @@ full titles. Tune with `eda/pclock-mode-line-words` and
 | `m` | `eda/mem-distill-for-task` | Have Claude distill a memory entry |
 | `r` | `eda/report-weekly` | Generate this week's report |
 | `g` | `eda/grid-refresh` | Rebuild the window grid |
+| `e` | `eda/grid-toggle-elfeed` | Toggle elfeed in/out of the grid (5↔7 Claude panes) |
+| `W` | `eda/task-set-worktree` | Set/repair a task's worktree by hand + relayout |
+| `R` | `eda/pclock-resync-workspaces` | Re-derive `:ws` for clocks whose workdir went missing |
 | `P` | `eda/portable-doctor` | Environment / degradation audit |
 | `?` | `eda/portable-describe` | Show profile + roots |
 | `M` | `eda/mcp-toggle` | Toggle the optional MCP bridge |
@@ -283,6 +298,8 @@ Claude always has the machine-appropriate context.
 | Symptom | Try |
 |---------|-----|
 | Grid collapsed to one window | `SPC k o g` to rebuild |
+| Grid reports **"no session for …"** / a clocked task shows an empty `*scratch*` pane | Its workspace mis-resolved (usually clocked before `:WORKTREE:`/`:TASK_SLUG:` were stamped). Set the workdir by hand with **`SPC k o W`**; or if the org entry is already fixed and only the clock is stale, **`SPC k o R`** re-derives `:ws` for clocks whose dir is missing. |
+| Want more Claude panes at once | **`SPC k o e`** toggles elfeed out of the grid — Claude cap goes 5 → 7 and the layout reflows |
 | Claude didn't start on `STRT` | Confirm it's an EDA task (under the worktree root); `SPC k o s` to start manually |
 | "Which machine am I on / what's missing?" | `SPC k o P` (doctor) — lists profile, roots, tools, disabled features |
 | Lost the resume command | `SPC k o y` copies `claude --resume …` |
