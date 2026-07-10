@@ -13,11 +13,38 @@
 ;;;                                         M-x verilog-ts-install-grammar
 
 ;; --- 1. Major-mode routing ---------------------------------------------------
-;; Open all .sv/.svh/.v/.vh/.sva in verilog-ts-mode when tree-sitter is
-;; available (Emacs 29+ ships with treesit built in).
-(when (treesit-available-p)
-  (add-to-list 'auto-mode-alist '("\\.s?vh?\\'" . verilog-ts-mode))
-  (add-to-list 'auto-mode-alist '("\\.sva\\'"   . verilog-ts-mode)))
+;; Route .sv/.svh/.v/.vh/.sva to tree-sitter `verilog-ts-mode' ONLY when the
+;; SystemVerilog grammar is actually installed on THIS box; otherwise fall back
+;; to classic `verilog-mode', which needs no grammar and fontifies/indents fully.
+;;
+;; Why gate on the grammar and not just `treesit-available-p': `verilog-ts-mode'
+;; derives from `verilog-mode' but only wires up its parser/font-lock/indent
+;; inside `(when (treesit-ready-p 'systemverilog) …)'.  `treesit-available-p' is
+;; true on every Emacs 29+ whether or not any grammar is installed, so gating on
+;; it alone meant a box WITHOUT the grammar — e.g. the Linux daemon, where
+;; `M-x verilog-ts-install-grammar' was never run — opened .sv in a crippled
+;; "SystemVerilog" mode with no highlighting instead of the working `verilog-mode'.
+;; To get tree-sitter there: `M-x verilog-ts-install-grammar' (needs cc + git),
+;; then restart the daemon so this check sees the grammar and picks verilog-ts.
+;; The choice is made at FILE-OPEN time (not config-load time) via a dispatcher:
+;; Doom adds its grammar dir to `treesit-extra-load-path' from a deferred
+;; `:config' block, which may run AFTER this file loads, so a load-time
+;; `treesit-language-available-p' check could miss the grammar even on a box
+;; that has it (false negative → wrong fallback).  By the time a .sv buffer is
+;; actually opened everything is loaded, so the check is reliable.
+(defun eda/sv-pick-mode ()
+  "Enable tree-sitter `verilog-ts-mode' if the SystemVerilog grammar is present,
+else classic `verilog-mode' (which needs no grammar).  Used from
+`auto-mode-alist' so the choice reflects the grammar actually installed on the
+box: `M-x verilog-ts-install-grammar' (needs cc + git) + restart to get ts."
+  (if (and (fboundp 'treesit-available-p)
+           (treesit-available-p)
+           (treesit-language-available-p 'systemverilog))
+      (verilog-ts-mode)
+    (verilog-mode)))
+
+(add-to-list 'auto-mode-alist '("\\.s?vh?\\'" . eda/sv-pick-mode))
+(add-to-list 'auto-mode-alist '("\\.sva\\'"   . eda/sv-pick-mode))
 
 ;; --- 2. verilog-ext ---------------------------------------------------------
 ;; The big bundle: xref, capf, hierarchy, eglot/lsp wiring, flycheck,
