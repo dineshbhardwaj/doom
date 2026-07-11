@@ -474,6 +474,26 @@ that already exists in the file (free text also accepted)."
         :v "C-\\" #'+eda/vterm-toggle-copy-mode
         :n "p"    #'+eda/vterm-copy-mode-paste))
 
+;; A finished Claude/shell leaves its vterm buffer ALIVE but with a dead
+;; process; any key-send then throws "Process vterm<N> not running: finished"
+;; (from our ESC/RET bindings AND claude-code's own send commands). Guard the
+;; low-level senders so a dead terminal gives a friendly hint — for a Claude
+;; buffer, how to resume — instead of a raw error. Only the already-broken
+;; dead-process case changes; a live process (or a non-vterm buffer) is passed
+;; straight through. Named advice ⇒ idempotent across `doom/reload'.
+(after! vterm
+  (defun +eda/vterm-guard-send (orig &rest args)
+    "Around-advice: skip a vterm send (with a hint) when the process has finished."
+    (if (and (derived-mode-p 'vterm-mode)
+             (not (process-live-p (get-buffer-process (current-buffer)))))
+        (message "Terminal process has finished — nothing to send.%s"
+                 (if (string-match-p "\\*claude" (buffer-name))
+                     " Resume with SPC k o j (or q to bury, C-x k to kill)."
+                   " Press q to bury / C-x k to kill this buffer."))
+      (apply orig args)))
+  (dolist (fn '(vterm-send-key vterm-send-string vterm-yank))
+    (when (fboundp fn) (advice-add fn :around #'+eda/vterm-guard-send))))
+
 ;; Belt-and-suspenders: ensure new vterm buffers start in evil emacs
 ;; state (no key interception) regardless of what claude-code or other
 ;; packages try to do.
