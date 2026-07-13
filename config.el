@@ -768,6 +768,7 @@ that already exists in the file (free text also accepted)."
 ;; EDA — MCP bridge (phase 17, OPTIONAL E12; off + non-load-bearing)
 ;; ════════════════════════════════════════════════════════════════════
 (load! "eda-mcp")
+(load! "eda-repeat")
 
 ;; ════════════════════════════════════════════════════════════════════
 ;; Terminal (emacs -nw) clipboard — macOS / Terminal.app

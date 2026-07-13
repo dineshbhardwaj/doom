@@ -573,6 +573,10 @@
             <tr><td><code class="key">SPC k o P</code></td><td><code class="cmd">eda/portable-doctor</code></td><td class="desc">Environment / degradation audit</td></tr>
             <tr><td><code class="key">SPC k o ?</code></td><td><code class="cmd">eda/portable-describe</code></td><td class="desc">Show profile + roots</td></tr>
             <tr><td><code class="key">SPC k o M</code></td><td><code class="cmd">eda/mcp-toggle</code></td><td class="desc">Toggle the optional MCP bridge</td></tr>
+            <tr><td><code class="key">SPC k o e</code></td><td><code class="cmd">eda/grid-toggle-elfeed</code></td><td class="desc">Toggle elfeed in/out of the grid (5↔7 Claude panes)</td></tr>
+            <tr><td><code class="key">SPC k o W</code></td><td><code class="cmd">eda/task-set-worktree</code></td><td class="desc">Set/repair a task's worktree by hand + relayout</td></tr>
+            <tr><td><code class="key">SPC k o R</code></td><td><code class="cmd">eda/pclock-resync-workspaces</code></td><td class="desc">Re-derive <code>:ws</code> for clocks whose workdir went missing</td></tr>
+            <tr><td><code class="key">SPC k o u</code></td><td><code class="cmd">eda/org-catchup-repeaters</code></td><td class="desc">Fast-forward overdue repeating (daily/weekly) tasks to their next instance</td></tr>
           </tbody>
         </table>
       </div>
@@ -677,6 +681,9 @@
           <thead><tr><th style="width:44%">Symptom</th><th>Try</th></tr></thead>
           <tbody>
             <tr><td class="desc">Grid collapsed to one window</td><td><code class="key">SPC k o g</code> to rebuild</td></tr>
+            <tr><td class="desc">Grid reports <b>"no session for …"</b> / a clocked task shows an empty <code>*scratch*</code> pane</td><td>Its workspace mis-resolved (usually clocked before <code>:WORKTREE:</code>/<code>:TASK_SLUG:</code> were stamped). Set it by hand with <code class="key">SPC k o W</code>; or if the org entry is fixed but the clock is stale, <code class="key">SPC k o R</code> re-derives <code>:ws</code></td></tr>
+            <tr><td class="desc">Want more Claude panes at once</td><td><code class="key">SPC k o e</code> toggles elfeed out of the grid — Claude cap goes 5 → 7 and the layout reflows</td></tr>
+            <tr><td class="desc">Daily/weekly repeating tasks piled up months overdue</td><td><code class="key">SPC k o u</code> (<code class="cmd">eda/org-catchup-repeaters</code>) fast-forwards every overdue repeating SCHEDULED/DEADLINE straight to its next instance — no repeated DONEs, no state change. Dry-run you confirm (<code>C-u</code> skips), logs <code>REPEATER_CATCHUP</code> per <code>LOGBOOK</code>, and rewrites a bare <code>+1w</code> to <code>.+1w</code> so future DONEs are one-shot</td></tr>
             <tr><td class="desc">Claude didn't start on STRT</td><td>Confirm it's an EDA task (under the worktree root); <code class="key">SPC k o s</code> to start manually</td></tr>
             <tr><td class="desc">"Which machine / what's missing?"</td><td><code class="key">SPC k o P</code> — doctor lists profile, roots, tools, disabled features</td></tr>
             <tr><td class="desc">Lost the resume command</td><td><code class="key">SPC k o y</code> copies <code>claude --resume …</code></td></tr>

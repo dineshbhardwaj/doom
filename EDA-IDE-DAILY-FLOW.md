@@ -224,6 +224,7 @@ time. Same isolation and independent commits, without the clone tax.
 | `e` | `eda/grid-toggle-elfeed` | Toggle elfeed in/out of the grid (5↔7 Claude panes) |
 | `W` | `eda/task-set-worktree` | Set/repair a task's worktree by hand + relayout |
 | `R` | `eda/pclock-resync-workspaces` | Re-derive `:ws` for clocks whose workdir went missing |
+| `u` | `eda/org-catchup-repeaters` | Fast-forward overdue repeating (daily/weekly) tasks to their next instance |
 | `P` | `eda/portable-doctor` | Environment / degradation audit |
 | `?` | `eda/portable-describe` | Show profile + roots |
 | `M` | `eda/mcp-toggle` | Toggle the optional MCP bridge |
@@ -324,6 +325,7 @@ Claude always has the machine-appropriate context.
 | Grid collapsed to one window | `SPC k o g` to rebuild |
 | Grid reports **"no session for …"** / a clocked task shows an empty `*scratch*` pane | Its workspace mis-resolved (usually clocked before `:WORKTREE:`/`:TASK_SLUG:` were stamped). Set the workdir by hand with **`SPC k o W`**; or if the org entry is already fixed and only the clock is stale, **`SPC k o R`** re-derives `:ws` for clocks whose dir is missing. |
 | Want more Claude panes at once | **`SPC k o e`** toggles elfeed out of the grid — Claude cap goes 5 → 7 and the layout reflows |
+| Daily/weekly repeating tasks piled up months overdue | **`SPC k o u`** (`eda/org-catchup-repeaters`) fast-forwards every overdue repeating SCHEDULED/DEADLINE straight to its next instance — no repeated DONEs, no state change. Shows a dry-run you confirm (`C-u` skips it) and logs `REPEATER_CATCHUP` in each LOGBOOK. It also rewrites a bare `+1w` repeater to `.+1w` so future DONEs are one-shot (toggle: `eda/org-catchup-convert-plus`). |
 | Claude didn't start on `STRT` | Confirm it's an EDA task (under the worktree root); `SPC k o s` to start manually |
 | "Which machine am I on / what's missing?" | `SPC k o P` (doctor) — lists profile, roots, tools, disabled features |
 | Lost the resume command | `SPC k o y` copies `claude --resume …` |
