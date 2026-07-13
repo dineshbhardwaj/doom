@@ -109,7 +109,17 @@ tasks here, and the session stays live so the work can be reviewed and finished.
         (org-get-at-bol 'org-marker)
         (user-error "No org entry at this agenda line")))
    ((derived-mode-p 'org-mode)
-    (save-excursion (org-back-to-heading t) (point-marker)))
+    (save-excursion
+      ;; Point may sit above the first headline (e.g. in project.org's preamble
+      ;; / top-level property drawer). `org-back-to-heading' errors there with a
+      ;; cryptic "Before first headline". project.org is per-task, so fall
+      ;; forward onto the first real heading instead; only error if the buffer
+      ;; genuinely has no headings.
+      (when (org-before-first-heading-p)
+        (or (outline-next-heading)
+            (user-error "No task heading in %s" (buffer-name))))
+      (org-back-to-heading t)
+      (point-marker)))
    (t (user-error "Not in an org-mode or org-agenda buffer"))))
 
 ;; --- Property accessors ----------------------------------------------------
